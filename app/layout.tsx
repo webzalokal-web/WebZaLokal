@@ -2,9 +2,9 @@ import type { Metadata } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "WebZaLokal | Od online pretrage do posjeta lokalu",
+  title: "WebZaLokal | Točne informacije, više poziva, manje održavanja",
   description:
-    "Moderne web stranice i digitalni QR meniji za kafiće, restorane i barove u Zagrebu.",
+    "Moderne web stranice i digitalni QR meniji za restorane, kafiće, barove i male lokalne dućane.",
   icons: {
     icon: "/favicon.svg",
     shortcut: "/favicon.svg",

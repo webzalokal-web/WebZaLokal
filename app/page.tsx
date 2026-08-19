@@ -1,22 +1,63 @@
 "use client";
 
-import { useEffect, useState, type FormEvent } from "react";
+import { useEffect, useRef, useState, type FormEvent } from "react";
+import {
+  categoryLabels,
+  conceptDesignSlugs,
+  defaultDemoBaseUrl,
+  demoDesigns,
+  demoUrl,
+} from "@/lib/demo-catalog";
 
 type Language = "hr" | "en";
+
+type AnalyticsEvent =
+  | "page_view"
+  | "language_change"
+  | "demo_open"
+  | "concept_open"
+  | "package_select"
+  | "audit_select"
+  | "contact_success"
+  | "contact_error";
+
+function trackEvent(event: AnalyticsEvent, detail = "") {
+  if (typeof window === "undefined") return;
+
+  const payload = JSON.stringify({
+    event,
+    path: window.location.pathname,
+    language: document.documentElement.lang,
+    referrer: document.referrer,
+    detail: detail.slice(0, 80),
+  });
+
+  if (navigator.sendBeacon) {
+    navigator.sendBeacon("/api/events", new Blob([payload], { type: "application/json" }));
+    return;
+  }
+
+  void fetch("/api/events", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: payload,
+    keepalive: true,
+  });
+}
 
 const content = {
   hr: {
     nav: [
       ["Usluge", "#usluge"],
+      ["Dizajni", "#dizajni"],
       ["Paketi", "#paketi"],
       ["Proces", "#proces"],
-      ["Plaćanje", "#placanje"],
     ],
     contact: "Pošaljite upit",
-    eyebrow: "Web stranice i digitalni meniji za zagrebačke lokale",
-    headline: "Pretvorite online pretrage u posjete vašem lokalu.",
+    eyebrow: "Web stranice i digitalni meniji za lokalna poslovanja",
+    headline: "Točne informacije. Više poziva. Manje ručnog održavanja.",
     intro:
-      "Brze, jasne i moderne web stranice za kafiće, restorane i barove. Bez kompliciranog procesa i bez skrivenih troškova.",
+      "Brze i jasne web stranice za restorane, kafiće, barove i male lokalne dućane — izrađene da gost ili kupac odmah pronađe razlog, vrijeme i način dolaska.",
     primaryCta: "Zatražite besplatan pregled",
     secondaryCta: "Pogledajte pakete",
     trust: ["HR + EN", "Prilagođeno mobitelu", "Fiksan opseg i cijena"],
@@ -28,7 +69,7 @@ const content = {
     qrLabel: "Digitalni meni",
     qrNote: "Skeniraj. Odaberi. Uživaj.",
     servicesKicker: "Što izrađujem",
-    servicesTitle: "Digitalna prisutnost skrojena za vaš tip lokala.",
+    servicesTitle: "Digitalna prisutnost skrojena za vaše poslovanje.",
     servicesIntro:
       "Polazim od provjerenih predložaka za svaku kategoriju, a sadržaj, boje i karakter prilagođavam vašem prostoru.",
     services: [
@@ -54,7 +95,18 @@ const content = {
       ["Kafić", "Topla atmosfera, ponuda kave, lokacija i radno vrijeme."],
       ["Restoran", "Jelovnik, rezervacije, priča kuhinje i ključne informacije."],
       ["Bar", "Program, signature pića, galerija i večernji identitet."],
+      ["Lokalni dućan", "Proizvodi, atmosfera, lokacija i jednostavan put do kupnje."],
     ],
+    designsKicker: "12 demo-dizajna",
+    designsTitle: "Provjerena osnova, dvanaest različitih karaktera.",
+    designsIntro: "Svaki smjer ima vlastitu paletu, tipografiju i ritam. Za stvarnog klijenta biramo najbolju polaznu točku i zatim je prilagođavamo fotografijama, sadržaju i karakteru lokala.",
+    openDemo: "Otvori cijeli demo",
+    viewAllDemos: "Otvori pregled svih dizajna",
+    conceptsKicker: "Označeni koncept-projekti",
+    conceptsTitle: "Tri potpune priče koje pokazuju kako razmišljamo.",
+    conceptsIntro: "Ovo nisu stvarni klijenti. To su jasno označene demonstracije mogućeg smjera za restoran, kafić i bar.",
+    conceptLabel: "Koncept-projekt · nije stvarni klijent",
+    conceptCta: "Pogledaj koncept",
     pricingKicker: "Fiksni paketi",
     pricingTitle: "Odaberite dobru početnu točku.",
     pricingIntro:
@@ -66,15 +118,6 @@ const content = {
     featured: "Najčešći izbor",
     choose: "Odaberite i nastavite",
     packages: [
-      {
-        name: "Besplatni pregled stranice",
-        price: "0 €",
-        total: "0 €",
-        free: true,
-        featured: false,
-        description: "Kratak pregled postojećeg weba ili menija s uočenim slabostima i konkretnim prijedlozima poboljšanja.",
-        features: ["Mobilni prikaz i čitljivost", "Jasnoća ponude i kontakta", "Osnovni SEO i brzina", "3 konkretna prijedloga", "Bez obveze"],
-      },
       {
         name: "Digitalni meni",
         price: "149 €",
@@ -103,6 +146,10 @@ const content = {
         features: ["Sve iz Web paketa", "Digitalni QR meni", "Usklađen dizajn", "Osnovna SEO postavka", "Neograničene dorade prije objave"],
       },
     ],
+    auditLabel: "Niste sigurni odakle krenuti?",
+    auditTitle: "Besplatni pregled postojeće stranice ili menija",
+    auditBody: "Dobivate kratku procjenu mobilnog prikaza, jasnoće ponude, kontakta, osnovnog SEO-a i tri konkretna prijedloga — bez obveze.",
+    auditCta: "Zatražite besplatni pregled",
     revisionPromise: "Neograničene dorade znače da završnu verziju prilagođavamo dok niste zadovoljni, unutar prvotno dogovorenog opsega. Nove stranice ili funkcionalnosti dogovaraju se zasebno.",
     addonLabel: "Dodatna mogućnost",
     addonTitle: "Samostalno uređivanje weba i menija",
@@ -142,14 +189,14 @@ const content = {
       ["Moram li imati spremne tekstove i fotografije?", "Ne. Mogu pomoći složiti tekstove iz vaših postojećih materijala. Za stvarne fotografije najbolje je koristiti vaše fotografije ili dogovoriti fotografiranje."],
       ["Može li paket biti drugačiji?", "Da. Paketi su fiksne početne opcije. Dodatne stranice, jezici ili funkcionalnosti procjenjuju se i potvrđuju prije početka."],
     ],
-    contactKicker: "Imate lokal u Zagrebu?",
-    contactTitle: "Pogledajmo što vašim gostima nedostaje online.",
+    contactKicker: "Imate lokalno poslovanje?",
+    contactTitle: "Pogledajmo što vašim kupcima nedostaje online.",
     contactBody:
       "Pošaljite naziv lokala i postojeći link, ako ga imate. Odgovorit ću kratkim prijedlogom bez obveze.",
     selectedOfferLabel: "Odabrani paket",
     selectedOfferHint: "Paket je automatski odabran u obrascu.",
     formTitle: "Pošaljite upit",
-    formVenue: "Naziv lokala",
+    formVenue: "Naziv poslovanja",
     formVenuePlaceholder: "npr. Kavana Centar",
     formEmail: "Kontakt e-mail",
     formPackage: "Paket",
@@ -158,28 +205,28 @@ const content = {
     formWebsitePlaceholder: "Poveznica, ako postoji",
     formMessage: "Što vam treba?",
     formMessagePlaceholder: "U nekoliko rečenica opišite lokal i što biste željeli poboljšati.",
-    formConsent: "Slažem se da se uneseni podaci koriste isključivo za odgovor na moj upit.",
-    formPrivacy: "Pravila privatnosti posrednika obrasca",
+    formConsent: "Slažem se da se uneseni podaci koriste isključivo za obradu i odgovor na moj upit.",
+    formPrivacy: "Pravila privatnosti",
     formSubmit: "Pošaljite upit",
     formSubmitting: "Šalje se…",
     formSuccess: "Hvala! Upit je poslan. Odgovorit ću na navedeni e-mail.",
     formError: "Upit nije poslan. Pokušajte ponovno ili pošaljite e-mail izravno.",
     emailLabel: "Ili pošaljite izravno na",
-    footerLine: "Web stranice i digitalni meniji za zagrebačke lokale.",
+    footerLine: "Web stranice i digitalni meniji za lokalna poslovanja.",
     footerLegal: "Usluge se ugovaraju putem Student servisa SCZG.",
   },
   en: {
     nav: [
       ["Services", "#usluge"],
+      ["Designs", "#dizajni"],
       ["Packages", "#paketi"],
       ["Process", "#proces"],
-      ["Payment", "#placanje"],
     ],
     contact: "Send an enquiry",
-    eyebrow: "Websites and digital menus for Zagreb venues",
-    headline: "Turn online searches into visits to your venue.",
+    eyebrow: "Websites and digital menus for local businesses",
+    headline: "Accurate information. More calls. Less manual upkeep.",
     intro:
-      "Fast, clear and modern websites for cafés, restaurants and bars. No complicated process and no hidden costs.",
+      "Fast, clear websites for restaurants, cafés, bars and small local shops — built so every guest or customer can immediately see why, when and how to visit.",
     primaryCta: "Request a free review",
     secondaryCta: "View packages",
     trust: ["HR + EN", "Mobile-friendly", "Fixed scope and price"],
@@ -191,7 +238,7 @@ const content = {
     qrLabel: "Digital menu",
     qrNote: "Scan. Choose. Enjoy.",
     servicesKicker: "What I create",
-    servicesTitle: "A digital presence tailored to your type of venue.",
+    servicesTitle: "A digital presence tailored to your business.",
     servicesIntro:
       "I start with proven structures for each category, then adapt the content, colours and personality to your space.",
     services: [
@@ -217,7 +264,18 @@ const content = {
       ["Café", "Warm atmosphere, coffee offer, location and opening hours."],
       ["Restaurant", "Menu, reservations, culinary story and essential information."],
       ["Bar", "Events, signature drinks, gallery and an evening identity."],
+      ["Local shop", "Products, atmosphere, location and a simple path to purchase."],
     ],
+    designsKicker: "12 demo designs",
+    designsTitle: "One proven foundation, twelve distinct personalities.",
+    designsIntro: "Each direction has its own palette, typography and rhythm. For a real client, we choose the strongest starting point and adapt it to the business, its photographs and content.",
+    openDemo: "Open full demo",
+    viewAllDemos: "View every design",
+    conceptsKicker: "Clearly labelled concept projects",
+    conceptsTitle: "Three complete stories that show how we think.",
+    conceptsIntro: "These are not real clients. They are clearly labelled demonstrations of a possible direction for a restaurant, café and bar.",
+    conceptLabel: "Concept project · not a real client",
+    conceptCta: "View concept",
     pricingKicker: "Fixed packages",
     pricingTitle: "Choose a strong starting point.",
     pricingIntro:
@@ -229,15 +287,6 @@ const content = {
     featured: "Most popular",
     choose: "Select and continue",
     packages: [
-      {
-        name: "Free website review",
-        price: "€0",
-        total: "€0",
-        free: true,
-        featured: false,
-        description: "A concise review of your current website or menu, highlighting weaknesses and practical ways to improve it.",
-        features: ["Mobile layout and readability", "Clarity of offer and contact details", "Basic SEO and speed", "3 practical recommendations", "No obligation"],
-      },
       {
         name: "Digital menu",
         price: "€149",
@@ -266,6 +315,10 @@ const content = {
         features: ["Everything in Website", "Digital QR menu", "Consistent design", "Basic SEO setup", "Unlimited pre-launch revisions"],
       },
     ],
+    auditLabel: "Not sure where to start?",
+    auditTitle: "A free review of your current website or menu",
+    auditBody: "You receive a concise review of the mobile experience, offer, contact details and basic SEO, plus three practical recommendations — with no obligation.",
+    auditCta: "Request a free review",
     revisionPromise: "Unlimited revisions mean the final version is refined until you are satisfied, within the originally agreed scope. New pages or functionality are quoted separately.",
     addonLabel: "Optional add-on",
     addonTitle: "Self-editable website and menu",
@@ -305,14 +358,14 @@ const content = {
       ["Do I need finished copy and photographs?", "No. I can help structure copy from your existing material. For authentic photographs, it is best to use your own or arrange a photo shoot."],
       ["Can a package be changed?", "Yes. Packages are fixed starting options. Additional pages, languages or functionality are estimated and confirmed before work begins."],
     ],
-    contactKicker: "Do you run a venue in Zagreb?",
-    contactTitle: "Let’s see what your guests are missing online.",
+    contactKicker: "Do you run a local business?",
+    contactTitle: "Let’s see what your customers are missing online.",
     contactBody:
       "Send the name of your venue and an existing link, if you have one. I’ll reply with a short, no-obligation suggestion.",
     selectedOfferLabel: "Selected package",
     selectedOfferHint: "The package is automatically selected in the form.",
     formTitle: "Send an enquiry",
-    formVenue: "Venue name",
+    formVenue: "Business name",
     formVenuePlaceholder: "e.g. Central Café",
     formEmail: "Contact email",
     formPackage: "Package",
@@ -321,14 +374,14 @@ const content = {
     formWebsitePlaceholder: "Link, if available",
     formMessage: "What do you need?",
     formMessagePlaceholder: "Briefly describe your venue and what you would like to improve.",
-    formConsent: "I agree that the submitted data may be used solely to respond to my enquiry.",
-    formPrivacy: "Form service privacy policy",
+    formConsent: "I agree that the submitted data may be used solely to process and respond to my enquiry.",
+    formPrivacy: "Privacy policy",
     formSubmit: "Send enquiry",
     formSubmitting: "Sending…",
     formSuccess: "Thank you! Your enquiry has been sent. I’ll reply to the email provided.",
     formError: "The enquiry was not sent. Please try again or email me directly.",
     emailLabel: "Or email directly",
-    footerLine: "Websites and digital menus for Zagreb venues.",
+    footerLine: "Websites and digital menus for local businesses.",
     footerLegal: "Services are contracted through SCZG Student Service.",
   },
 } as const;
@@ -337,7 +390,11 @@ export default function Home() {
   const [language, setLanguage] = useState<Language>("hr");
   const [selectedOffer, setSelectedOffer] = useState<string | null>(null);
   const [formStatus, setFormStatus] = useState<"idle" | "submitting" | "success" | "error">("idle");
+  const formStartedAt = useRef(0);
   const t = content[language];
+  const concepts = demoDesigns.filter((design) =>
+    conceptDesignSlugs.includes(design.slug as (typeof conceptDesignSlugs)[number]),
+  );
   const mailSubject = encodeURIComponent(
     language === "hr" ? "Upit za WebZaLokal" : "WebZaLokal enquiry",
   );
@@ -359,28 +416,50 @@ export default function Home() {
     document.documentElement.lang = language;
   }, [language]);
 
+  useEffect(() => {
+    formStartedAt.current = Date.now();
+    trackEvent("page_view");
+  }, []);
+
   const submitEnquiry = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     const form = event.currentTarget;
     setFormStatus("submitting");
 
     try {
-      const response = await fetch("https://formsubmit.co/ajax/webzalokal@gmail.com", {
+      const data = new FormData(form);
+      const response = await fetch("/api/contact", {
         method: "POST",
-        headers: { Accept: "application/json" },
-        body: new FormData(form),
+        headers: {
+          Accept: "application/json",
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          businessName: data.get("businessName"),
+          email: data.get("email"),
+          packageName: data.get("packageName"),
+          website: data.get("website"),
+          message: data.get("message"),
+          consent: data.get("privacyConsent") === "yes",
+          companySite: data.get("companySite"),
+          language,
+          startedAt: formStartedAt.current,
+        }),
       });
-      const result = (await response.json()) as { success?: boolean | string };
+      const result = (await response.json()) as { success?: boolean };
 
-      if (!response.ok || result.success === false || result.success === "false") {
+      if (!response.ok || result.success !== true) {
         throw new Error("Form submission failed");
       }
 
       form.reset();
+      formStartedAt.current = Date.now();
       setSelectedOffer(null);
       setFormStatus("success");
+      trackEvent("contact_success");
     } catch {
       setFormStatus("error");
+      trackEvent("contact_error");
     }
   };
 
@@ -400,8 +479,8 @@ export default function Home() {
 
         <div className="header-actions">
           <div className="language-switch" aria-label={language === "hr" ? "Odabir jezika" : "Choose language"}>
-            <button type="button" aria-pressed={language === "hr"} onClick={() => { setLanguage("hr"); setSelectedOffer(null); }}>HR</button>
-            <button type="button" aria-pressed={language === "en"} onClick={() => { setLanguage("en"); setSelectedOffer(null); }}>EN</button>
+            <button type="button" aria-pressed={language === "hr"} onClick={() => { setLanguage("hr"); setSelectedOffer(null); trackEvent("language_change", "hr"); }}>HR</button>
+            <button type="button" aria-pressed={language === "en"} onClick={() => { setLanguage("en"); setSelectedOffer(null); trackEvent("language_change", "en"); }}>EN</button>
           </div>
           <a className="small-cta" href="#kontakt">{t.contact}</a>
         </div>
@@ -414,7 +493,7 @@ export default function Home() {
             <h1>{t.headline}</h1>
             <p className="hero-intro">{t.intro}</p>
             <div className="hero-actions">
-              <a className="button button-primary" href="#kontakt" onClick={() => setSelectedOffer(t.packages[0].name)}>{t.primaryCta}<span aria-hidden="true">↓</span></a>
+              <a className="button button-primary" href="#kontakt" onClick={() => { setSelectedOffer(t.auditTitle); trackEvent("audit_select"); }}>{t.primaryCta}<span aria-hidden="true">↓</span></a>
               <a className="button button-ghost" href="#paketi">{t.secondaryCta}<span aria-hidden="true">↓</span></a>
             </div>
             <ul className="trust-list" aria-label={language === "hr" ? "Prednosti" : "Benefits"}>
@@ -483,18 +562,91 @@ export default function Home() {
           </div>
         </section>
 
+        <section className="designs section-wrap" id="dizajni">
+          <div className="section-heading split-heading designs-heading">
+            <div><p className="section-kicker">{t.designsKicker}</p><h2>{t.designsTitle}</h2></div>
+            <p>{t.designsIntro}</p>
+          </div>
+          <div className="demo-grid">
+            {demoDesigns.map((design, index) => (
+              <a
+                className="demo-card"
+                href={demoUrl(design.slug)}
+                target="_blank"
+                rel="noreferrer"
+                onClick={() => trackEvent("demo_open", design.slug)}
+                key={design.slug}
+              >
+                <div className="demo-preview" style={{ background: design.colors[0], color: design.colors[2] }}>
+                  <span className="demo-browser"><i /><i /><i /></span>
+                  <small>{categoryLabels[design.category][language]}</small>
+                  <strong>{design.sampleName}</strong>
+                  <span className="demo-palette" aria-hidden="true">
+                    {design.colors.map((color) => <i style={{ background: color }} key={color} />)}
+                  </span>
+                  <b>0{index + 1}</b>
+                </div>
+                <div className="demo-copy">
+                  <span>{design.name}</span>
+                  <h3>{design.sampleName}</h3>
+                  <p>{language === "hr" ? design.description : design.descriptionEn}</p>
+                  <strong>{t.openDemo}<span aria-hidden="true">↗</span></strong>
+                </div>
+              </a>
+            ))}
+          </div>
+          <div className="designs-action">
+            <a className="button button-outline" href={defaultDemoBaseUrl} target="_blank" rel="noreferrer" onClick={() => trackEvent("demo_open", "catalog")}>{t.viewAllDemos}<span aria-hidden="true">↗</span></a>
+          </div>
+        </section>
+
+        <section className="concepts">
+          <div className="section-wrap concepts-inner">
+            <div className="section-heading split-heading">
+              <div><p className="section-kicker light">{t.conceptsKicker}</p><h2>{t.conceptsTitle}</h2></div>
+              <p>{t.conceptsIntro}</p>
+            </div>
+            <div className="concept-grid">
+              {concepts.map((concept) => (
+                <a
+                  className={`concept-card concept-${concept.category}`}
+                  href={demoUrl(concept.slug)}
+                  target="_blank"
+                  rel="noreferrer"
+                  onClick={() => trackEvent("concept_open", concept.slug)}
+                  key={concept.slug}
+                >
+                  <span className="concept-label">{t.conceptLabel}</span>
+                  <div className="concept-number">{categoryLabels[concept.category][language]}</div>
+                  <h3>{concept.sampleName}</h3>
+                  <p>{language === "hr" ? concept.description : concept.descriptionEn}</p>
+                  <strong>{t.conceptCta}<span aria-hidden="true">↗</span></strong>
+                </a>
+              ))}
+            </div>
+          </div>
+        </section>
+
         <section className="pricing section-wrap" id="paketi">
           <div className="section-heading centered-heading">
             <p className="section-kicker">{t.pricingKicker}</p>
             <h2>{t.pricingTitle}</h2>
             <p>{t.pricingIntro}</p>
           </div>
+          <article className="audit-banner">
+            <div>
+              <span>{t.auditLabel}</span>
+              <h3>{t.auditTitle}</h3>
+              <p>{t.auditBody}</p>
+            </div>
+            <a className="button button-outline" href="#kontakt" onClick={() => { setSelectedOffer(t.auditTitle); trackEvent("audit_select"); }}>{t.auditCta}<span aria-hidden="true">↓</span></a>
+          </article>
           <div className="pricing-grid">
             {t.packages.map((item) => (
               <a
                 className={`price-card ${item.featured ? "featured" : ""} ${item.free ? "free" : ""}`}
                 href="#kontakt"
-                onClick={() => setSelectedOffer(item.name)}
+                onClick={() => { setSelectedOffer(item.name); trackEvent("package_select", item.name); }}
                 aria-label={`${t.choose}: ${item.name}`}
                 key={item.name}
               >
@@ -592,19 +744,17 @@ export default function Home() {
               )}
               <form
                 className="contact-form"
-                action="https://formsubmit.co/webzalokal@gmail.com"
+                action="/api/contact"
                 method="POST"
                 onSubmit={submitEnquiry}
                 aria-busy={formStatus === "submitting"}
               >
-                <input type="hidden" name="_subject" value="Novi WebZaLokal upit" />
-                <input type="hidden" name="_template" value="table" />
-                <input className="form-honey" type="text" name="_honey" tabIndex={-1} autoComplete="off" aria-hidden="true" />
+                <input className="form-honey" type="text" name="companySite" tabIndex={-1} autoComplete="off" aria-hidden="true" />
                 <h3>{t.formTitle}</h3>
                 <div className="form-grid">
                   <label className="form-field">
                     <span>{t.formVenue}</span>
-                    <input type="text" name="venue" placeholder={t.formVenuePlaceholder} autoComplete="organization" required />
+                    <input type="text" name="businessName" placeholder={t.formVenuePlaceholder} autoComplete="organization" minLength={2} maxLength={100} required />
                   </label>
                   <label className="form-field">
                     <span>{t.formEmail}</span>
@@ -612,8 +762,9 @@ export default function Home() {
                   </label>
                   <label className="form-field form-field-full">
                     <span>{t.formPackage}</span>
-                    <select name="package" value={selectedOffer ?? ""} onChange={(event) => setSelectedOffer(event.target.value || null)} required>
+                    <select name="packageName" value={selectedOffer ?? ""} onChange={(event) => setSelectedOffer(event.target.value || null)} required>
                       <option value="">{t.formPackagePlaceholder}</option>
+                      <option value={t.auditTitle}>{t.auditTitle}</option>
                       {t.packages.map((item) => <option value={item.name} key={item.name}>{item.name}</option>)}
                       <option value={t.addonTitle}>{t.addonTitle}</option>
                     </select>
@@ -624,12 +775,12 @@ export default function Home() {
                   </label>
                   <label className="form-field form-field-full">
                     <span>{t.formMessage}</span>
-                    <textarea name="message" placeholder={t.formMessagePlaceholder} rows={4} required />
+                    <textarea name="message" placeholder={t.formMessagePlaceholder} rows={4} minLength={10} maxLength={3000} required />
                   </label>
                 </div>
                 <label className="form-consent">
-                  <input type="checkbox" name="privacy_consent" value="yes" required />
-                  <span>{t.formConsent} <a href="https://formsubmit.co/privacy.pdf" target="_blank" rel="noreferrer">{t.formPrivacy}</a>.</span>
+                  <input type="checkbox" name="privacyConsent" value="yes" required />
+                  <span>{t.formConsent} <a href="/privatnost/">{t.formPrivacy}</a>.</span>
                 </label>
                 <button className="button button-primary" type="submit" disabled={formStatus === "submitting"}>
                   {formStatus === "submitting" ? t.formSubmitting : t.formSubmit}
@@ -648,7 +799,7 @@ export default function Home() {
 
       <footer className="footer section-wrap">
         <a className="brand" href="#vrh"><span className="brand-mark" aria-hidden="true">WZL</span><span>WebZaLokal</span></a>
-        <div><p>{t.footerLine}</p><small>{t.footerLegal}</small></div>
+        <div><p>{t.footerLine}</p><small>{t.footerLegal}</small><nav className="footer-links" aria-label={language === "hr" ? "Dodatne poveznice" : "Additional links"}><a href="/privatnost/">{t.formPrivacy}</a><a href="/studio/" rel="nofollow">Studio Lite</a></nav></div>
         <p className="copyright">© {new Date().getFullYear()} WebZaLokal</p>
       </footer>
     </div>

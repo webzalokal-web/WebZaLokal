@@ -8,7 +8,11 @@
   "scripts": {
     "dev": "next dev",
     "build": "next build --webpack",
-    "lint": "eslint . --ignore-pattern out --ignore-pattern .next"
+    "lint": "eslint . --ignore-pattern out --ignore-pattern .next",
+    "check": "npm run lint && npm run build && wrangler deploy --dry-run --outdir .tmp/worker-bundle && node scripts/test-worker.mjs",
+    "preview:worker": "wrangler dev",
+    "deploy": "npm run build && wrangler deploy",
+    "monitor": "node scripts/monitor.mjs"
   },
   "dependencies": {
     "next": "16.2.6",
@@ -23,7 +27,8 @@
     "eslint": "9.39.4",
     "eslint-config-next": "16.2.6",
     "tailwindcss": "4.2.1",
-    "typescript": "5.9.3"
+    "typescript": "5.9.3",
+    "wrangler": "4.124.0"
   },
   "type": "module"
 }
