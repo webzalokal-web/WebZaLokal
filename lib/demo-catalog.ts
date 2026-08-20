@@ -28,9 +28,9 @@ export const demoDesigns: DemoDesign[] = [
     category: "restaurant",
     name: "Kvartovski bistro",
     sampleName: "Tavola",
-    description: "Topla, pristupačna estetika s maslinastim i terakota tonovima.",
-    descriptionEn: "A warm, approachable aesthetic with olive and terracotta tones.",
-    colors: ["#f4eddf", "#bd5b3d", "#263129"],
+    description: "Svježa mediteranska paleta s egejsko plavom, bijelom i morskim tonovima.",
+    descriptionEn: "A fresh Mediterranean palette of Aegean blue, white and coastal tones.",
+    colors: ["#eaf4f5", "#1f6fa3", "#153247"],
   },
   {
     slug: "restaurant-fast-food",
@@ -38,9 +38,9 @@ export const demoDesigns: DemoDesign[] = [
     category: "restaurant",
     name: "Fast food / štand",
     sampleName: "Brzi Zalogaj",
-    description: "Snažan kontrast, veliki naslovi i brz put do narudžbe.",
-    descriptionEn: "Bold contrast, large headlines and a fast path to ordering.",
-    colors: ["#f4ed34", "#e6452f", "#171717"],
+    description: "Čili crvena, taktilni plakatni detalji i energija meksičkog street fooda.",
+    descriptionEn: "Chilli red, tactile poster details and Mexican street-food energy.",
+    colors: ["#f8dfb3", "#c91f28", "#24120d"],
   },
   {
     slug: "cafe-specialty-minimal",
@@ -48,9 +48,9 @@ export const demoDesigns: DemoDesign[] = [
     category: "cafe",
     name: "Specialty minimal",
     sampleName: "Kadar Kava",
-    description: "Čist, prozračan sustav s espresso i kadulja detaljima.",
-    descriptionEn: "A clean, airy system with espresso and sage details.",
-    colors: ["#f4f2ec", "#5f765f", "#272721"],
+    description: "Čist, prozračan sustav u slojevima šumske, kadulja i mliječno zelene.",
+    descriptionEn: "A clean, airy system layered in forest, sage and milky greens.",
+    colors: ["#e4eee1", "#2f6b4f", "#173428"],
   },
   {
     slug: "cafe-neighborhood-cozy",
@@ -98,9 +98,9 @@ export const demoDesigns: DemoDesign[] = [
     category: "bar",
     name: "Night / event",
     sampleName: "PULSE",
-    description: "Neonski naglasci, oštra geometrija i snažna najava programa.",
-    descriptionEn: "Neon accents, sharp geometry and a programme-led structure.",
-    colors: ["#070611", "#b8ff3d", "#76f7ff"],
+    description: "Odvažan klupski poster u ultraljubičastoj, koraljnoj i svježoj mint paleti.",
+    descriptionEn: "A bold club-poster direction in ultraviolet, coral and fresh mint.",
+    colors: ["#160a2b", "#ff5a4f", "#fff4e8"],
   },
   {
     slug: "shop-vintage-second-hand",
@@ -140,12 +140,6 @@ export const categoryLabels: Record<BusinessCategory, { hr: string; en: string }
   bar: { hr: "Bar", en: "Bar" },
   shop: { hr: "Lokalni dućan", en: "Local shop" },
 };
-
-export const conceptDesignSlugs = [
-  "restaurant-fine-dining",
-  "cafe-specialty-minimal",
-  "bar-cocktail-lounge",
-] as const;
 
 export const defaultDemoBaseUrl =
   process.env.NEXT_PUBLIC_DEMO_BASE_URL ??
