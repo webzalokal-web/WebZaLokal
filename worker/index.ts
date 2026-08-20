@@ -249,6 +249,7 @@ async function handleContact(request: Request, env: Env) {
   upstreamBody.set("_template", "table");
   upstreamBody.set("_captcha", "false");
   upstreamBody.set("_replyto", email);
+  upstreamBody.set("_url", new URL("/", request.url).toString());
   upstreamBody.set("ID upita", submissionId);
   upstreamBody.set("Naziv poslovanja", businessName);
   upstreamBody.set("Kontakt e-mail", email);
