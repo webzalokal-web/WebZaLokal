@@ -67,6 +67,41 @@ const tooFast = await worker.fetch(request("/api/contact", {
 }), env);
 assert.equal(tooFast.status, 400);
 
+const originalFetch = globalThis.fetch;
+let upstreamRequest;
+globalThis.fetch = async (input, init) => {
+  upstreamRequest = new Request(input, init);
+  return Response.json({ success: true });
+};
+
+try {
+  const contact = await worker.fetch(request("/api/contact", {
+    method: "POST",
+    headers: { Origin: "https://webzalokal.test", "Content-Type": "application/json" },
+    body: JSON.stringify({
+      businessName: "Test lokal",
+      email: "test@example.com",
+      packageName: "Web za lokal",
+      website: "https://example.com",
+      message: "Ovo je dovoljno duga testna poruka.",
+      consent: true,
+      companySite: "",
+      language: "hr",
+      startedAt: Date.now() - 5000,
+    }),
+  }), env);
+
+  assert.equal(contact.status, 201);
+  assert.equal((await contact.json()).success, true);
+  assert.equal(upstreamRequest?.method, "POST");
+  assert.equal(upstreamRequest?.headers.get("Accept"), "application/json");
+  const upstreamForm = await upstreamRequest.formData();
+  assert.equal(upstreamForm.get("_url"), "https://webzalokal.test/");
+  assert.equal(upstreamForm.get("Kontakt e-mail"), "test@example.com");
+} finally {
+  globalThis.fetch = originalFetch;
+}
+
 const unknownApi = await worker.fetch(request("/api/unknown"), env);
 assert.equal(unknownApi.status, 404);
 

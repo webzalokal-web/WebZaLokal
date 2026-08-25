@@ -5,8 +5,8 @@ const checks = [
   { name: "WebZaLokal početna", url: `${siteUrl}/`, contains: "WebZaLokal" },
   { name: "WebZaLokal health", url: `${siteUrl}/api/health`, jsonStatus: "ok" },
   { name: "Studio Lite", url: `${siteUrl}/studio/`, contains: "Studio Lite" },
-  { name: "Katalog dizajna", url: `${demoUrl}/`, contains: "Dvanaest različitih karaktera" },
-  { name: "Koncept restorana", url: `${demoUrl}/templates/restaurant-fine-dining/`, contains: "Aurelia" },
+  { name: "Katalog dizajna", url: `${demoUrl}/`, contains: "Okvir za početak" },
+  { name: "Aurelia demo", url: `${demoUrl}/templates/restaurant-fine-dining/`, contains: "Aurelia" },
 ];
 
 let failed = false;

@@ -3,7 +3,6 @@
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import {
   categoryLabels,
-  conceptDesignSlugs,
   defaultDemoBaseUrl,
   demoDesigns,
   demoUrl,
@@ -15,7 +14,6 @@ type AnalyticsEvent =
   | "page_view"
   | "language_change"
   | "demo_open"
-  | "concept_open"
   | "package_select"
   | "audit_select"
   | "contact_success"
@@ -55,7 +53,7 @@ const content = {
     ],
     contact: "Pošaljite upit",
     eyebrow: "Web stranice i digitalni meniji za lokalna poslovanja",
-    headline: "Točne informacije. Više poziva. Manje ručnog održavanja.",
+    headline: "Jednostavna stranica koja gostima odmah daje ono što traže.",
     intro:
       "Brze i jasne web stranice za restorane, kafiće, barove i male lokalne dućane — izrađene da gost ili kupac odmah pronađe razlog, vrijeme i način dolaska.",
     primaryCta: "Zatražite besplatan pregled",
@@ -98,15 +96,12 @@ const content = {
       ["Lokalni dućan", "Proizvodi, atmosfera, lokacija i jednostavan put do kupnje."],
     ],
     designsKicker: "12 demo-dizajna",
-    designsTitle: "Provjerena osnova, dvanaest različitih karaktera.",
-    designsIntro: "Svaki smjer ima vlastitu paletu, tipografiju i ritam. Za stvarnog klijenta biramo najbolju polaznu točku i zatim je prilagođavamo fotografijama, sadržaju i karakteru lokala.",
+    designsTitle: "Ovo je početni okvir. Vaša stranica tek treba zaživjeti.",
+    designsIntro: "Demo-dizajni pokazuju mogući smjer — nisu gotove stranice koje samo preslikavamo. Svaki projekt prilagođavamo vašim fotografijama, ponudi, tonu, bojama i stvarnim potrebama.",
+    designsNoteTitle: "Nijedan klijent ne dobiva kopiju demo-stranice.",
+    designsNoteBody: "Provjerena struktura ubrzava izradu, a identitet gradimo oko konkretnog lokala i ljudi kojima se obraća.",
     openDemo: "Otvori cijeli demo",
     viewAllDemos: "Otvori pregled svih dizajna",
-    conceptsKicker: "Označeni koncept-projekti",
-    conceptsTitle: "Tri potpune priče koje pokazuju kako razmišljamo.",
-    conceptsIntro: "Ovo nisu stvarni klijenti. To su jasno označene demonstracije mogućeg smjera za restoran, kafić i bar.",
-    conceptLabel: "Koncept-projekt · nije stvarni klijent",
-    conceptCta: "Pogledaj koncept",
     pricingKicker: "Fiksni paketi",
     pricingTitle: "Odaberite dobru početnu točku.",
     pricingIntro:
@@ -224,7 +219,7 @@ const content = {
     ],
     contact: "Send an enquiry",
     eyebrow: "Websites and digital menus for local businesses",
-    headline: "Accurate information. More calls. Less manual upkeep.",
+    headline: "A simple website that gives customers what they need, right away.",
     intro:
       "Fast, clear websites for restaurants, cafés, bars and small local shops — built so every guest or customer can immediately see why, when and how to visit.",
     primaryCta: "Request a free review",
@@ -267,15 +262,12 @@ const content = {
       ["Local shop", "Products, atmosphere, location and a simple path to purchase."],
     ],
     designsKicker: "12 demo designs",
-    designsTitle: "One proven foundation, twelve distinct personalities.",
-    designsIntro: "Each direction has its own palette, typography and rhythm. For a real client, we choose the strongest starting point and adapt it to the business, its photographs and content.",
+    designsTitle: "This is a starting framework. Your website is still waiting to come alive.",
+    designsIntro: "The demos show possible directions — they are not finished websites that we simply copy. Every project is adapted to your photography, offer, tone, colours and real business needs.",
+    designsNoteTitle: "No client receives a copy of a demo website.",
+    designsNoteBody: "A proven structure speeds up the build, while the identity is shaped around the actual business and the people it serves.",
     openDemo: "Open full demo",
     viewAllDemos: "View every design",
-    conceptsKicker: "Clearly labelled concept projects",
-    conceptsTitle: "Three complete stories that show how we think.",
-    conceptsIntro: "These are not real clients. They are clearly labelled demonstrations of a possible direction for a restaurant, café and bar.",
-    conceptLabel: "Concept project · not a real client",
-    conceptCta: "View concept",
     pricingKicker: "Fixed packages",
     pricingTitle: "Choose a strong starting point.",
     pricingIntro:
@@ -392,9 +384,6 @@ export default function Home() {
   const [formStatus, setFormStatus] = useState<"idle" | "submitting" | "success" | "error">("idle");
   const formStartedAt = useRef(0);
   const t = content[language];
-  const concepts = demoDesigns.filter((design) =>
-    conceptDesignSlugs.includes(design.slug as (typeof conceptDesignSlugs)[number]),
-  );
   const mailSubject = encodeURIComponent(
     language === "hr" ? "Upit za WebZaLokal" : "WebZaLokal enquiry",
   );
@@ -567,6 +556,10 @@ export default function Home() {
             <div><p className="section-kicker">{t.designsKicker}</p><h2>{t.designsTitle}</h2></div>
             <p>{t.designsIntro}</p>
           </div>
+          <aside className="designs-note">
+            <span aria-hidden="true">↳</span>
+            <div><strong>{t.designsNoteTitle}</strong><p>{t.designsNoteBody}</p></div>
+          </aside>
           <div className="demo-grid">
             {demoDesigns.map((design, index) => (
               <a
@@ -597,33 +590,6 @@ export default function Home() {
           </div>
           <div className="designs-action">
             <a className="button button-outline" href={defaultDemoBaseUrl} target="_blank" rel="noreferrer" onClick={() => trackEvent("demo_open", "catalog")}>{t.viewAllDemos}<span aria-hidden="true">↗</span></a>
-          </div>
-        </section>
-
-        <section className="concepts">
-          <div className="section-wrap concepts-inner">
-            <div className="section-heading split-heading">
-              <div><p className="section-kicker light">{t.conceptsKicker}</p><h2>{t.conceptsTitle}</h2></div>
-              <p>{t.conceptsIntro}</p>
-            </div>
-            <div className="concept-grid">
-              {concepts.map((concept) => (
-                <a
-                  className={`concept-card concept-${concept.category}`}
-                  href={demoUrl(concept.slug)}
-                  target="_blank"
-                  rel="noreferrer"
-                  onClick={() => trackEvent("concept_open", concept.slug)}
-                  key={concept.slug}
-                >
-                  <span className="concept-label">{t.conceptLabel}</span>
-                  <div className="concept-number">{categoryLabels[concept.category][language]}</div>
-                  <h3>{concept.sampleName}</h3>
-                  <p>{language === "hr" ? concept.description : concept.descriptionEn}</p>
-                  <strong>{t.conceptCta}<span aria-hidden="true">↗</span></strong>
-                </a>
-              ))}
-            </div>
           </div>
         </section>
 
