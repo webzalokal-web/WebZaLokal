@@ -15,9 +15,9 @@ export default function PrivacyPage() {
       </header>
 
       <article className="legal-card">
-        <p className="section-kicker">Pravila privatnosti · verzija 1.0</p>
+        <p className="section-kicker">Pravila privatnosti · verzija 1.1</p>
         <h1>Vaš upit koristimo samo da bismo vam odgovorili.</h1>
-        <p className="legal-lead">Ova pravila opisuju podatke koje obrađuje webzalokal.webzalokal.workers.dev. Zadnje ažuriranje: 19. kolovoza 2026.</p>
+        <p className="legal-lead">Ova pravila opisuju podatke koje obrađuje webzalokal.webzalokal.workers.dev. Zadnje ažuriranje: 26. kolovoza 2026.</p>
 
         <section>
           <h2>1. Tko obrađuje podatke</h2>
@@ -27,7 +27,7 @@ export default function PrivacyPage() {
         <section>
           <h2>2. Kontaktni obrazac</h2>
           <p>Kada pošaljete upit, obrađuju se naziv poslovanja, e-mail, odabrana usluga, eventualna poveznica i sadržaj poruke. Podaci se koriste isključivo za procjenu zahtjeva, odgovor i eventualni dogovor projekta.</p>
-          <p>Obrazac prolazi kroz Cloudflare Worker i zatim se dostavlja na WebZaLokal e-mail putem servisa FormSubmit. Ne prodajemo podatke niti ih koristimo za newsletter. Za tehničku dostavu vrijede i <a href="https://formsubmit.co/privacy.pdf" target="_blank" rel="noreferrer">pravila privatnosti FormSubmita ↗</a>.</p>
+          <p>Obrazac prolazi kroz Cloudflare Worker i zatim se dostavlja na WebZaLokal e-mail putem servisa Resend. Ne prodajemo podatke niti ih koristimo za newsletter. Za tehničku dostavu vrijede i <a href="https://resend.com/legal/privacy-policy" target="_blank" rel="noreferrer">pravila privatnosti Resenda ↗</a>.</p>
         </section>
 
         <section>
@@ -52,7 +52,7 @@ export default function PrivacyPage() {
 
         <aside>
           <strong>English summary</strong>
-          <p>Enquiry data is used only to assess and answer your request. The form is processed by a Cloudflare Worker and delivered by FormSubmit. First-party analytics are cookieless and do not store names, email addresses or IP addresses. Contact <a href="mailto:webzalokal@gmail.com">webzalokal@gmail.com</a> to request access, correction or deletion.</p>
+          <p>Enquiry data is used only to assess and answer your request. The form is processed by a Cloudflare Worker and delivered by Resend. First-party analytics are cookieless and do not store names, email addresses or IP addresses. Contact <a href="mailto:webzalokal@gmail.com">webzalokal@gmail.com</a> to request access, correction or deletion.</p>
         </aside>
       </article>
     </main>

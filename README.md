@@ -20,7 +20,7 @@ npm run check
 ## Što radi Cloudflare Worker
 
 - poslužuje statički Next.js export iz `out/`;
-- prima `POST /api/contact`, provjerava i ograničava upite te ih dostavlja na `webzalokal@gmail.com`;
+- prima `POST /api/contact`, provjerava i ograničava upite te ih putem Resenda dostavlja na `webzalokal@gmail.com`;
 - prima dopuštene događaje na `POST /api/events` i zapisuje ih u Analytics Engine bez kolačića i osobnih identifikatora;
 - izlaže `GET /api/health` za monitoring;
 - uključuje Cloudflare observability, sigurnosna zaglavlja i tri rate-limit pravila.
@@ -30,6 +30,8 @@ npm run check
 `/studio/` je noindex interna radna površina. Nacrt se automatski sprema samo u `localStorage` trenutnog preglednika. Studio izrađuje generatorsku naredbu za repozitorij predložaka i izvozi strukturirani `brief.json`.
 
 ## Objava
+
+Resend API ključ sprema se kao Cloudflare secret `RESEND_API_KEY`; nikada se ne zapisuje u repozitorij.
 
 ```bash
 npm run deploy
