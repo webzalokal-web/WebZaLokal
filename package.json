@@ -9,7 +9,8 @@
     "dev": "next dev",
     "build": "next build --webpack",
     "lint": "eslint . --ignore-pattern out --ignore-pattern .next",
-    "check": "npm run lint && npm run build && wrangler deploy --dry-run --outdir .tmp/worker-bundle && node scripts/test-worker.mjs",
+    "types:worker": "wrangler types worker-configuration.d.ts --include-runtime=false --check",
+    "check": "npm run lint && npm run types:worker && npm run build && wrangler deploy --dry-run --outdir .tmp/worker-bundle && node scripts/test-worker.mjs",
     "preview:worker": "wrangler dev",
     "deploy": "npm run build && wrangler deploy",
     "monitor": "node scripts/monitor.mjs"
@@ -20,6 +21,7 @@
     "react-dom": "19.2.6"
   },
   "devDependencies": {
+    "@cloudflare/workers-types": "^5.20260826.1",
     "@tailwindcss/postcss": "4.2.1",
     "@types/node": "22.19.19",
     "@types/react": "19.2.14",

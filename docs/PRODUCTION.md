@@ -6,7 +6,7 @@
 2. Obrazac šalje JSON isključivo na isti origin, `/api/contact`.
 3. Worker provjerava origin, veličinu zahtjeva, skriveno polje, vrijeme ispunjavanja, obavezna polja, URL i privolu.
 4. Globalni limiter ograničava nagle valove, a hash e-maila ograničava ponovljene pokušaje bez spremanja e-maila u limiter.
-5. Potvrđeni upit dobiva UUID i šalje se na službeni e-mail preko FormSubmita.
+5. Potvrđeni upit dobiva UUID i šalje se na službeni e-mail preko Resenda. Adresa pošiljatelja obrasca postavlja se kao `Reply-To` kako bi odgovor iz Gmaila stigao izravno potencijalnom klijentu.
 6. Analitika bilježi samo rezultat dostave i odabranu uslugu, bez imena, e-maila, poruke ili IP adrese.
 7. Za stvarni projekt otvara se Studio Lite, popunjava brief i pokreće generator iz WebZaLokal-Templates repozitorija.
 
@@ -43,7 +43,7 @@ GitHub Actions workflow: `.github/workflows/monitor.yml`. Raspored: svaka 6 sata
 ## Prije prve stvarne narudžbe
 
 - poslati probni upit i potvrditi dostavu na službeni e-mail;
-- provjeriti je li aktivacijski e-mail FormSubmita potvrđen;
+- potvrditi da je Resend račun otvoren adresom `webzalokal@gmail.com` i da je Cloudflare secret `RESEND_API_KEY` postavljen;
 - u Cloudflare Analytics Engineu potvrditi dolazak prvih događaja;
 - ručno pokrenuti GitHub Actions monitoring;
 - izvesti probni Studio Lite brief i pokrenuti generatorsku naredbu;

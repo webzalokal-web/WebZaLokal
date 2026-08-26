@@ -36,7 +36,11 @@
   ],
   "vars": {
     "CONTACT_EMAIL": "webzalokal@gmail.com",
-    "APP_VERSION": "2026.08.19-1"
+    "CONTACT_FROM": "WebZaLokal <onboarding@resend.dev>",
+    "APP_VERSION": "2026.08.26-1"
+  },
+  "secrets": {
+    "required": ["RESEND_API_KEY"]
   },
   "observability": {
     "enabled": true,

@@ -18,12 +18,32 @@ const env = {
   CONTACT_LIMITER: { async limit() { return { success: true }; } },
   CONTACT_GLOBAL_LIMITER: { async limit() { return { success: true }; } },
   EVENT_LIMITER: { async limit() { return { success: true }; } },
+  RESEND_API_KEY: "re_test_secret",
   CONTACT_EMAIL: "webzalokal@gmail.com",
+  CONTACT_FROM: "WebZaLokal <onboarding@resend.dev>",
   APP_VERSION: "test",
 };
 
 function request(path, init = {}) {
   return new Request(`https://webzalokal.test${path}`, init);
+}
+
+function validContactRequest() {
+  return request("/api/contact", {
+    method: "POST",
+    headers: { Origin: "https://webzalokal.test", "Content-Type": "application/json" },
+    body: JSON.stringify({
+      businessName: "Test lokal",
+      email: "test@example.com",
+      packageName: "Web za lokal",
+      website: "https://example.com",
+      message: "Ovo je dovoljno duga testna poruka.",
+      consent: true,
+      companySite: "",
+      language: "hr",
+      startedAt: Date.now() - 5000,
+    }),
+  });
 }
 
 const health = await worker.fetch(request("/api/health"), env);
@@ -71,33 +91,34 @@ const originalFetch = globalThis.fetch;
 let upstreamRequest;
 globalThis.fetch = async (input, init) => {
   upstreamRequest = new Request(input, init);
-  return Response.json({ success: true });
+  return Response.json({ id: "resend-test-id" });
 };
 
 try {
-  const contact = await worker.fetch(request("/api/contact", {
-    method: "POST",
-    headers: { Origin: "https://webzalokal.test", "Content-Type": "application/json" },
-    body: JSON.stringify({
-      businessName: "Test lokal",
-      email: "test@example.com",
-      packageName: "Web za lokal",
-      website: "https://example.com",
-      message: "Ovo je dovoljno duga testna poruka.",
-      consent: true,
-      companySite: "",
-      language: "hr",
-      startedAt: Date.now() - 5000,
-    }),
-  }), env);
+  const contact = await worker.fetch(validContactRequest(), env);
 
   assert.equal(contact.status, 201);
   assert.equal((await contact.json()).success, true);
+  assert.equal(upstreamRequest?.url, "https://api.resend.com/emails");
   assert.equal(upstreamRequest?.method, "POST");
   assert.equal(upstreamRequest?.headers.get("Accept"), "application/json");
-  const upstreamForm = await upstreamRequest.formData();
-  assert.equal(upstreamForm.get("_url"), "https://webzalokal.test/");
-  assert.equal(upstreamForm.get("Kontakt e-mail"), "test@example.com");
+  assert.equal(upstreamRequest?.headers.get("Authorization"), "Bearer re_test_secret");
+  assert.match(upstreamRequest?.headers.get("Idempotency-Key") ?? "", /^[0-9a-f-]{36}$/);
+  const upstreamBody = await upstreamRequest.json();
+  assert.equal(upstreamBody.from, "WebZaLokal <onboarding@resend.dev>");
+  assert.deepEqual(upstreamBody.to, ["webzalokal@gmail.com"]);
+  assert.equal(upstreamBody.reply_to, "test@example.com");
+  assert.match(upstreamBody.text, /Ovo je dovoljno duga testna poruka\./);
+
+  globalThis.fetch = async () => Response.json({ message: "rate limited" }, { status: 429 });
+  const rejected = await worker.fetch(validContactRequest(), env);
+  assert.equal(rejected.status, 502);
+  assert.equal((await rejected.json()).success, false);
+  assert.equal(analytics.at(-1)?.blobs?.[0], "contact_upstream_error");
+
+  const notConfigured = await worker.fetch(validContactRequest(), { ...env, RESEND_API_KEY: "" });
+  assert.equal(notConfigured.status, 503);
+  assert.equal((await notConfigured.json()).success, false);
 } finally {
   globalThis.fetch = originalFetch;
 }

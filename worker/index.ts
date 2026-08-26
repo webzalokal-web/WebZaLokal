@@ -1,29 +1,3 @@
-interface AssetsBinding {
-  fetch(request: Request): Promise<Response>;
-}
-
-interface AnalyticsBinding {
-  writeDataPoint(point: {
-    blobs?: string[];
-    doubles?: number[];
-    indexes?: string[];
-  }): void;
-}
-
-interface RateLimiterBinding {
-  limit(options: { key: string }): Promise<{ success: boolean }>;
-}
-
-interface Env {
-  ASSETS: AssetsBinding;
-  ANALYTICS: AnalyticsBinding;
-  CONTACT_LIMITER: RateLimiterBinding;
-  CONTACT_GLOBAL_LIMITER: RateLimiterBinding;
-  EVENT_LIMITER: RateLimiterBinding;
-  CONTACT_EMAIL: string;
-  APP_VERSION: string;
-}
-
 type ContactPayload = {
   businessName?: unknown;
   email?: unknown;
@@ -108,6 +82,10 @@ function validWebsite(value: string) {
   } catch {
     return false;
   }
+}
+
+function singleLine(value: string) {
+  return value.replace(/[\r\n]+/g, " ").replace(/\s+/g, " ").trim();
 }
 
 function sameOrigin(request: Request) {
@@ -244,48 +222,57 @@ async function handleContact(request: Request, env: Env) {
   }
 
   const submissionId = crypto.randomUUID();
-  const upstreamBody = new FormData();
-  upstreamBody.set("_subject", `Novi WebZaLokal upit · ${businessName}`);
-  upstreamBody.set("_template", "table");
-  upstreamBody.set("_captcha", "false");
-  upstreamBody.set("_replyto", email);
-  upstreamBody.set("_url", new URL("/", request.url).toString());
-  upstreamBody.set("ID upita", submissionId);
-  upstreamBody.set("Naziv poslovanja", businessName);
-  upstreamBody.set("Kontakt e-mail", email);
-  upstreamBody.set("Odabrana usluga", packageName);
-  upstreamBody.set("Postojeći web ili meni", website || "Nije navedeno");
-  upstreamBody.set("Jezik obrasca", language.toUpperCase());
-  upstreamBody.set("Poruka", message);
+  if (!env.RESEND_API_KEY) {
+    console.error("contact_delivery_not_configured", { submissionId, provider: "resend" });
+    writeAnalytics(env, "contact_upstream_error", "/api/contact", language, "", "configuration");
+    return json({ success: false, message: "Dostava trenutačno nije dostupna. Pošaljite e-mail izravno." }, 503);
+  }
+
+  const emailText = [
+    "Novi upit putem WebZaLokal kontakt-forme",
+    "",
+    `ID upita: ${submissionId}`,
+    `Naziv poslovanja: ${businessName}`,
+    `Kontakt e-mail: ${email}`,
+    `Odabrana usluga: ${packageName}`,
+    `Postojeći web ili meni: ${website || "Nije navedeno"}`,
+    `Jezik obrasca: ${language.toUpperCase()}`,
+    "",
+    "Poruka:",
+    message,
+  ].join("\n");
 
   let upstream: Response;
   try {
-    upstream = await fetch(`https://formsubmit.co/ajax/${encodeURIComponent(env.CONTACT_EMAIL)}`, {
+    upstream = await fetch("https://api.resend.com/emails", {
       method: "POST",
-      headers: { Accept: "application/json" },
-      body: upstreamBody,
+      headers: {
+        Accept: "application/json",
+        Authorization: `Bearer ${env.RESEND_API_KEY}`,
+        "Content-Type": "application/json",
+        "Idempotency-Key": submissionId,
+      },
+      body: JSON.stringify({
+        from: env.CONTACT_FROM,
+        to: [env.CONTACT_EMAIL],
+        reply_to: email,
+        subject: `Novi WebZaLokal upit · ${singleLine(businessName)}`,
+        text: emailText,
+      }),
     });
   } catch (error) {
-    console.error("contact_upstream_unreachable", { submissionId, error: String(error) });
+    console.error("contact_upstream_unreachable", { submissionId, provider: "resend", error: String(error) });
     writeAnalytics(env, "contact_upstream_error", "/api/contact", language, "", "network");
     return json({ success: false, message: "Dostava trenutačno nije dostupna. Pošaljite e-mail izravno." }, 502);
   }
 
-  let upstreamSuccess = upstream.ok;
-  try {
-    const result = (await upstream.clone().json()) as { success?: boolean | string };
-    if (result.success === false || result.success === "false") upstreamSuccess = false;
-  } catch {
-    // Some successful upstream responses are not JSON; the HTTP status remains authoritative.
-  }
-
-  if (!upstreamSuccess) {
-    console.error("contact_upstream_error", { submissionId, status: upstream.status });
+  if (!upstream.ok) {
+    console.error("contact_upstream_error", { submissionId, provider: "resend", status: upstream.status });
     writeAnalytics(env, "contact_upstream_error", "/api/contact", language, "", String(upstream.status));
     return json({ success: false, message: "Dostava trenutačno nije dostupna. Pošaljite e-mail izravno." }, 502);
   }
 
-  console.log("contact_received", { submissionId });
+  console.log("contact_received", { submissionId, provider: "resend" });
   writeAnalytics(env, "contact_received", "/api/contact", language, "", packageName);
   return json({ success: true, submissionId }, 201);
 }
@@ -324,6 +311,6 @@ const worker = {
 
     return env.ASSETS.fetch(request);
   },
-};
+} satisfies ExportedHandler<Env>;
 
 export default worker;
