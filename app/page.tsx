@@ -765,7 +765,7 @@ export default function Home() {
 
       <footer className="footer section-wrap">
         <a className="brand" href="#vrh"><span className="brand-mark" aria-hidden="true">WZL</span><span>WebZaLokal</span></a>
-        <div><p>{t.footerLine}</p><small>{t.footerLegal}</small><nav className="footer-links" aria-label={language === "hr" ? "Dodatne poveznice" : "Additional links"}><a href="/privatnost/">{t.formPrivacy}</a><a href="/studio/" rel="nofollow">Studio Lite</a></nav></div>
+        <div><p>{t.footerLine}</p><small>{t.footerLegal}</small><nav className="footer-links" aria-label={language === "hr" ? "Dodatne poveznice" : "Additional links"}><a href="/privatnost/">{t.formPrivacy}</a><a href="/uvjeti/">{language === "hr" ? "Uvjeti korištenja" : "Terms of use"}</a><a href="/studio/" rel="nofollow">Studio Lite</a></nav></div>
         <p className="copyright">© {new Date().getFullYear()} WebZaLokal</p>
       </footer>
     </div>

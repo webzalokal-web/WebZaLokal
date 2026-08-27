@@ -18,7 +18,12 @@ const env = {
   CONTACT_LIMITER: { async limit() { return { success: true }; } },
   CONTACT_GLOBAL_LIMITER: { async limit() { return { success: true }; } },
   EVENT_LIMITER: { async limit() { return { success: true }; } },
+  LEAD_SEARCH_LIMITER: { async limit() { return { success: true }; } },
+  LEADS_DB: {},
   RESEND_API_KEY: "re_test_secret",
+  GOOGLE_PLACES_API_KEY: "google_test_secret",
+  LEAD_FINDER_ACCESS_TOKEN: "lead_test_secret",
+  LEAD_FINDER_USERNAME: "webzalokal",
   CONTACT_EMAIL: "webzalokal@gmail.com",
   CONTACT_FROM: "WebZaLokal <onboarding@resend.dev>",
   APP_VERSION: "test",
@@ -86,6 +91,43 @@ const tooFast = await worker.fetch(request("/api/contact", {
   }),
 }), env);
 assert.equal(tooFast.status, 400);
+
+const leadFinderChallenge = await worker.fetch(request("/lead-finder/"), env);
+assert.equal(leadFinderChallenge.status, 401);
+assert.match(leadFinderChallenge.headers.get("WWW-Authenticate") ?? "", /WebZaLokal Lead Finder/);
+
+const leadAuthorization = `Basic ${Buffer.from("webzalokal:lead_test_secret").toString("base64")}`;
+const protectedLeadFinder = await worker.fetch(request("/lead-finder/", {
+  headers: { Authorization: leadAuthorization },
+}), env);
+assert.equal(protectedLeadFinder.status, 200);
+assert.equal(await protectedLeadFinder.text(), "static-asset");
+
+const unauthorizedLeadApi = await worker.fetch(request("/api/lead-finder/summary"), env);
+assert.equal(unauthorizedLeadApi.status, 401);
+
+const invalidLeadSearch = await worker.fetch(request("/api/lead-finder/search", {
+  method: "POST",
+  headers: {
+    Authorization: leadAuthorization,
+    Origin: "https://webzalokal.test",
+    "Content-Type": "application/json",
+  },
+  body: JSON.stringify({ location: "", businessType: "x", limit: 100 }),
+}), env);
+assert.equal(invalidLeadSearch.status, 400);
+assert.equal((await invalidLeadSearch.json()).code, "VALIDATION_ERROR");
+
+const crossOriginLeadSearch = await worker.fetch(request("/api/lead-finder/search", {
+  method: "POST",
+  headers: {
+    Authorization: leadAuthorization,
+    Origin: "https://example.test",
+    "Content-Type": "application/json",
+  },
+  body: JSON.stringify({ location: "Rijeka", businessType: "restaurant", limit: 20 }),
+}), env);
+assert.equal(crossOriginLeadSearch.status, 403);
 
 const originalFetch = globalThis.fetch;
 let upstreamRequest;

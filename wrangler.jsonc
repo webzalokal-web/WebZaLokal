@@ -2,12 +2,12 @@
   "$schema": "./node_modules/wrangler/config-schema.json",
   "name": "webzalokal",
   "main": "worker/index.ts",
-  "compatibility_date": "2026-08-19",
+  "compatibility_date": "2026-08-27",
   "compatibility_flags": ["nodejs_compat"],
   "assets": {
     "directory": "./out",
     "binding": "ASSETS",
-    "run_worker_first": ["/api/*"],
+    "run_worker_first": ["/api/*", "/lead-finder", "/lead-finder/*"],
     "html_handling": "auto-trailing-slash",
     "not_found_handling": "404-page"
   },
@@ -32,15 +32,28 @@
       "name": "EVENT_LIMITER",
       "namespace_id": "42003",
       "simple": { "limit": 120, "period": 60 }
+    },
+    {
+      "name": "LEAD_SEARCH_LIMITER",
+      "namespace_id": "42004",
+      "simple": { "limit": 5, "period": 60 }
+    }
+  ],
+  "d1_databases": [
+    {
+      "binding": "LEADS_DB",
+      "database_name": "webzalokal-leads",
+      "migrations_dir": "migrations"
     }
   ],
   "vars": {
     "CONTACT_EMAIL": "webzalokal@gmail.com",
     "CONTACT_FROM": "WebZaLokal <onboarding@resend.dev>",
-    "APP_VERSION": "2026.08.26-1"
+    "APP_VERSION": "2026.08.27-1",
+    "LEAD_FINDER_USERNAME": "webzalokal"
   },
   "secrets": {
-    "required": ["RESEND_API_KEY"]
+    "required": ["RESEND_API_KEY", "GOOGLE_PLACES_API_KEY", "LEAD_FINDER_ACCESS_TOKEN"]
   },
   "observability": {
     "enabled": true,

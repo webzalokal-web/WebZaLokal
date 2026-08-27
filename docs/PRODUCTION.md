@@ -10,6 +10,22 @@
 6. Analitika bilježi samo rezultat dostave i odabranu uslugu, bez imena, e-maila, poruke ili IP adrese.
 7. Za stvarni projekt otvara se Studio Lite, popunjava brief i pokreće generator iz WebZaLokal-Templates repozitorija.
 
+## Lead Finder v1
+
+Interna ruta `/lead-finder/` i svi `/api/lead-finder/*` endpointi zaključani su HTTP Basic autentikacijom. Korisničko ime dolazi iz `LEAD_FINDER_USERNAME`, a lozinka iz Cloudflare secreta `LEAD_FINDER_ACCESS_TOKEN`.
+
+Jedna pretraga:
+
+1. validira lokaciju, kategoriju i limit 1–20;
+2. prolazi kroz `LEAD_SEARCH_LIMITER` (5 zahtjeva/60 s);
+3. radi jedan Google Places Text Search poziv bez paginacije i retryja;
+4. normalizira djelomične podatke i pouzdano određuje `hasWebsite`;
+5. deduplicira po `provider + provider_place_id`;
+6. u D1 sprema Place ID i interni workflow, ne Google poslovne detalje;
+7. vraća svježe detalje tabličnom UI-ju uz Google Maps atribuciju.
+
+Operativna dokumentacija: [`LEAD_FINDER.md`](LEAD_FINDER.md).
+
 ## Analytics Engine shema
 
 Dataset: `WEBZALOKAL_EVENTS`
@@ -44,6 +60,9 @@ GitHub Actions workflow: `.github/workflows/monitor.yml`. Raspored: svaka 6 sata
 
 - poslati probni upit i potvrditi dostavu na službeni e-mail;
 - potvrditi da je Resend račun otvoren adresom `webzalokal@gmail.com` i da je Cloudflare secret `RESEND_API_KEY` postavljen;
+- potvrditi da su `GOOGLE_PLACES_API_KEY` i `LEAD_FINDER_ACCESS_TOKEN` postavljeni kao Cloudflare secreti;
+- ograničiti Google ključ na Places API (New) i postaviti billing/quota obavijesti;
+- izvesti prvi `Rijeka, Croatia + restaurant + 20` test i ponoviti ga radi provjere deduplikacije;
 - u Cloudflare Analytics Engineu potvrditi dolazak prvih događaja;
 - ručno pokrenuti GitHub Actions monitoring;
 - izvesti probni Studio Lite brief i pokrenuti generatorsku naredbu;

@@ -1,3 +1,9 @@
+import { GooglePlacesProvider } from "./lead-finder/google-places-provider";
+import { getLeadFinderSummary } from "./lead-finder/repository";
+import { runLeadSearch } from "./lead-finder/service";
+import { BusinessSearchProviderError } from "./lead-finder/types";
+import { validateLeadSearchInput } from "./lead-finder/validation";
+
 type ContactPayload = {
   businessName?: unknown;
   email?: unknown;
@@ -91,6 +97,81 @@ function singleLine(value: string) {
 function sameOrigin(request: Request) {
   const origin = request.headers.get("Origin");
   return origin !== null && origin === new URL(request.url).origin;
+}
+
+async function timingSafeStringEqual(left: string, right: string) {
+  const encoder = new TextEncoder();
+  const subtle: SubtleCrypto & {
+    timingSafeEqual?: (left: ArrayBuffer, right: ArrayBuffer) => boolean;
+  } = crypto.subtle;
+  const [leftDigest, rightDigest] = await Promise.all([
+    subtle.digest("SHA-256", encoder.encode(left)),
+    subtle.digest("SHA-256", encoder.encode(right)),
+  ]);
+
+  if (typeof subtle.timingSafeEqual === "function") {
+    return subtle.timingSafeEqual(leftDigest, rightDigest);
+  }
+
+  const leftBytes = new Uint8Array(leftDigest);
+  const rightBytes = new Uint8Array(rightDigest);
+  let difference = 0;
+  for (let index = 0; index < leftBytes.length; index += 1) {
+    difference |= leftBytes[index] ^ rightBytes[index];
+  }
+  return difference === 0;
+}
+
+function basicCredentials(request: Request) {
+  const authorization = request.headers.get("Authorization") ?? "";
+  if (!authorization.startsWith("Basic ")) return null;
+
+  try {
+    const decoded = atob(authorization.slice(6));
+    const separator = decoded.indexOf(":");
+    if (separator < 0) return null;
+    return {
+      username: decoded.slice(0, separator),
+      password: decoded.slice(separator + 1),
+    };
+  } catch {
+    return null;
+  }
+}
+
+function leadFinderConfigured(env: Env) {
+  return Boolean(env.LEAD_FINDER_USERNAME && env.LEAD_FINDER_ACCESS_TOKEN);
+}
+
+async function leadFinderAuthorized(request: Request, env: Env) {
+  const credentials = basicCredentials(request);
+  if (!credentials || !leadFinderConfigured(env)) return false;
+  const [usernameMatches, passwordMatches] = await Promise.all([
+    timingSafeStringEqual(credentials.username, env.LEAD_FINDER_USERNAME),
+    timingSafeStringEqual(credentials.password, env.LEAD_FINDER_ACCESS_TOKEN),
+  ]);
+  return usernameMatches && passwordMatches;
+}
+
+function leadFinderChallenge(apiRequest: boolean) {
+  const headers = {
+    "WWW-Authenticate": 'Basic realm="WebZaLokal Lead Finder", charset="UTF-8"',
+  };
+  if (apiRequest) {
+    return json(
+      { success: false, code: "UNAUTHORIZED", message: "Potreban je interni Lead Finder pristup." },
+      401,
+      headers,
+    );
+  }
+  return new Response("Potreban je interni WebZaLokal Lead Finder pristup.", {
+    status: 401,
+    headers: {
+      ...apiHeaders,
+      ...headers,
+      "Content-Type": "text/plain; charset=utf-8",
+    },
+  });
 }
 
 function referrerHost(value: string) {
@@ -292,9 +373,179 @@ async function handleHealth(request: Request, env: Env) {
   return json(payload, healthy ? 200 : 503);
 }
 
+async function handleLeadFinderSearch(request: Request, env: Env) {
+  if (!sameOrigin(request)) {
+    return json(
+      { success: false, code: "ORIGIN_REJECTED", message: "Zahtjev nije dopušten." },
+      403,
+    );
+  }
+
+  const contentLength = Number(request.headers.get("Content-Length") ?? "0");
+  if (contentLength > 8_192) {
+    return json(
+      { success: false, code: "PAYLOAD_TOO_LARGE", message: "Zahtjev je prevelik." },
+      413,
+    );
+  }
+
+  const rate = await env.LEAD_SEARCH_LIMITER.limit({ key: "lead-finder-search" });
+  if (!rate.success) {
+    return json(
+      {
+        success: false,
+        code: "SEARCH_RATE_LIMITED",
+        message: "Dosegnut je sigurnosni limit pretrage. Pokušajte ponovno za minutu.",
+      },
+      429,
+      { "Retry-After": "60" },
+    );
+  }
+
+  let payload: Record<string, unknown>;
+  try {
+    payload = await parseJson<Record<string, unknown>>(request);
+  } catch {
+    return json(
+      { success: false, code: "INVALID_JSON", message: "Podaci pretrage nisu ispravni." },
+      400,
+    );
+  }
+
+  const validation = validateLeadSearchInput(payload);
+  if (!validation.success) {
+    return json(
+      {
+        success: false,
+        code: "VALIDATION_ERROR",
+        message: "Provjerite podatke pretrage.",
+        fieldErrors: validation.fieldErrors,
+      },
+      400,
+    );
+  }
+
+  if (!env.GOOGLE_PLACES_API_KEY) {
+    console.error(JSON.stringify({ event: "lead_search_not_configured", provider: "google-places" }));
+    return json(
+      {
+        success: false,
+        code: "PROVIDER_NOT_CONFIGURED",
+        message: "Google Places pristup još nije konfiguriran.",
+      },
+      503,
+    );
+  }
+
+  try {
+    const result = await runLeadSearch(
+      env.LEADS_DB,
+      new GooglePlacesProvider(env.GOOGLE_PLACES_API_KEY),
+      validation.value,
+    );
+    console.log(JSON.stringify({
+      event: "lead_search_completed",
+      searchId: result.search.id,
+      provider: result.provider.name,
+      providerRequestCount: result.search.providerRequestCount,
+      returnedCount: result.search.returnedCount,
+      createdCount: result.search.createdCount,
+      updatedCount: result.search.updatedCount,
+    }));
+    return json(result, 201);
+  } catch (error) {
+    if (error instanceof BusinessSearchProviderError) {
+      console.error(JSON.stringify({
+        event: "lead_search_provider_error",
+        provider: "google-places",
+        code: error.code,
+        status: error.httpStatus,
+      }));
+      return json(
+        { success: false, code: error.code, message: error.message },
+        error.httpStatus,
+        error.retryAfterSeconds ? { "Retry-After": String(error.retryAfterSeconds) } : undefined,
+      );
+    }
+
+    console.error(JSON.stringify({
+      event: "lead_search_internal_error",
+      error: error instanceof Error ? error.message : String(error),
+    }));
+    return json(
+      {
+        success: false,
+        code: "LEAD_SEARCH_FAILED",
+        message: "Pretragu nije moguće dovršiti. Pokušajte ponovno.",
+      },
+      500,
+    );
+  }
+}
+
+async function handleLeadFinderSummary(env: Env) {
+  try {
+    const summary = await getLeadFinderSummary(env.LEADS_DB);
+    return json({ success: true, ...summary });
+  } catch (error) {
+    console.error(JSON.stringify({
+      event: "lead_summary_internal_error",
+      error: error instanceof Error ? error.message : String(error),
+    }));
+    return json(
+      {
+        success: false,
+        code: "LEAD_SUMMARY_FAILED",
+        message: "Sažetak spremljenih leadova trenutačno nije dostupan.",
+      },
+      500,
+    );
+  }
+}
+
+async function handleLeadFinderApi(request: Request, env: Env, pathname: string) {
+  if (!leadFinderConfigured(env)) {
+    return json(
+      {
+        success: false,
+        code: "LEAD_FINDER_NOT_CONFIGURED",
+        message: "Interni Lead Finder pristup još nije konfiguriran.",
+      },
+      503,
+    );
+  }
+  if (!(await leadFinderAuthorized(request, env))) return leadFinderChallenge(true);
+
+  if (pathname === "/api/lead-finder/search" && request.method === "POST") {
+    return handleLeadFinderSearch(request, env);
+  }
+  if (pathname === "/api/lead-finder/summary" && request.method === "GET") {
+    return handleLeadFinderSummary(env);
+  }
+  return json(
+    { success: false, code: "NOT_FOUND", message: "Lead Finder endpoint nije pronađen." },
+    404,
+  );
+}
+
 const worker = {
   async fetch(request: Request, env: Env): Promise<Response> {
     const url = new URL(request.url);
+
+    if (url.pathname === "/lead-finder" || url.pathname.startsWith("/lead-finder/")) {
+      if (!leadFinderConfigured(env)) {
+        return new Response("Lead Finder još nije konfiguriran.", {
+          status: 503,
+          headers: { ...apiHeaders, "Content-Type": "text/plain; charset=utf-8" },
+        });
+      }
+      if (!(await leadFinderAuthorized(request, env))) return leadFinderChallenge(false);
+      return env.ASSETS.fetch(request);
+    }
+
+    if (url.pathname.startsWith("/api/lead-finder/")) {
+      return handleLeadFinderApi(request, env, url.pathname);
+    }
 
     if (url.pathname === "/api/health" && (request.method === "GET" || request.method === "HEAD")) {
       return handleHealth(request, env);
