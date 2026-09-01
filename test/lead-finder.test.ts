@@ -75,6 +75,21 @@ describe("Lead Finder input validation", () => {
 });
 
 describe("Google Places provider", () => {
+  it("calls an injected fetch function without binding it to the provider instance", async () => {
+    const receiverSensitiveFetcher: typeof fetch = function (
+      this: unknown,
+      resource: string | URL | Request,
+      init?: RequestInit,
+    ) {
+      if (this !== undefined) throw new TypeError("Illegal invocation");
+      expect(new Request(resource, init).url).toBe("https://places.googleapis.com/v1/places:searchText");
+      return Promise.resolve(Response.json({ places: [] }));
+    };
+
+    const result = await new GooglePlacesProvider(validTestApiKey, receiverSensitiveFetcher).search(input);
+    expect(result).toMatchObject({ providerRequestCount: 1, rawResultCount: 0, leads: [] });
+  });
+
   it("uses one bounded Text Search request and normalizes partial data", async () => {
     let request: Request | null = null;
     const fetcher = async (resource: string | URL | Request, init?: RequestInit) => {

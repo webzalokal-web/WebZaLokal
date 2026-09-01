@@ -237,11 +237,16 @@ function safeFetchExceptionDetail(error: unknown, apiKey: string) {
 export class GooglePlacesProvider implements BusinessSearchProvider {
   readonly name = GOOGLE_PLACES_PROVIDER;
   readonly maximumRequestsPerSearch = 1 as const;
+  private readonly fetcher: FetchLike;
 
   constructor(
     private readonly apiKey: string,
-    private readonly fetcher: FetchLike = fetch,
-  ) {}
+    fetcher: FetchLike = fetch,
+  ) {
+    // Cloudflare's native fetch requires a neutral receiver. Calling a stored
+    // native function as `this.fetcher()` throws "Illegal invocation".
+    this.fetcher = (input, init) => fetcher(input, init);
+  }
 
   async search(input: LeadSearchInput): Promise<BusinessSearchProviderResult> {
     const apiKey = this.apiKey.trim();
