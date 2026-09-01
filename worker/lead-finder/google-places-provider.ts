@@ -216,6 +216,24 @@ function validGoogleApiKey(value: string) {
   return /^[A-Za-z0-9_-]{20,200}$/.test(value);
 }
 
+function safeFetchExceptionDetail(error: unknown, apiKey: string) {
+  const cause = error instanceof Error ? error.cause : undefined;
+  const parts = [
+    error instanceof Error ? error.name : "UnknownError",
+    error instanceof Error ? error.message : "Unknown fetch exception",
+    cause instanceof Error ? cause.name : "",
+    cause instanceof Error ? cause.message : "",
+  ].filter(Boolean);
+
+  let detail = parts.join(": ");
+  if (apiKey) detail = detail.replaceAll(apiKey, "[redacted]");
+  return detail
+    .replace(/AIza[A-Za-z0-9_-]+/g, "[redacted]")
+    .replace(/\b[A-Za-z0-9_-]{24,}\b/g, "[redacted]")
+    .replace(/[\r\n\t]+/g, " ")
+    .slice(0, 240);
+}
+
 export class GooglePlacesProvider implements BusinessSearchProvider {
   readonly name = GOOGLE_PLACES_PROVIDER;
   readonly maximumRequestsPerSearch = 1 as const;
@@ -255,9 +273,11 @@ export class GooglePlacesProvider implements BusinessSearchProvider {
     } catch (error) {
       if (error instanceof BusinessSearchProviderError) throw error;
       const diagnosticCode = fetchExceptionDiagnostic(error);
+      const diagnosticDetail = safeFetchExceptionDetail(error, apiKey);
       console.error(JSON.stringify({
         event: "google_places_fetch_exception",
         diagnosticCode,
+        diagnosticDetail,
         errorName: error instanceof Error ? error.name : "UnknownError",
       }));
       throw new BusinessSearchProviderError(
@@ -266,6 +286,7 @@ export class GooglePlacesProvider implements BusinessSearchProvider {
         502,
         undefined,
         diagnosticCode,
+        diagnosticDetail,
       );
     }
 

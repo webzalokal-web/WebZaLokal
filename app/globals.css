@@ -3106,6 +3106,12 @@ summary:focus-visible {
   line-height: 1.55;
 }
 
+.lead-diagnostic-detail code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 9px;
+  overflow-wrap: anywhere;
+}
+
 .lead-refresh-button {
   min-height: 38px;
   margin-top: 12px;

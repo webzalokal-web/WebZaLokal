@@ -184,7 +184,24 @@ describe("Google Places provider", () => {
       .rejects.toMatchObject({
         code: "PROVIDER_UNREACHABLE",
         diagnosticCode: "NETWORK_CONNECTION_LOST",
+        diagnosticDetail: "TypeError: Network connection lost.",
       } satisfies Partial<BusinessSearchProviderError>);
+  });
+
+  it("redacts API-key shaped values from fetch diagnostics", async () => {
+    const fetcher = async () => {
+      throw new TypeError(`fetch failed for ${validTestApiKey}`);
+    };
+
+    try {
+      await new GooglePlacesProvider(validTestApiKey, fetcher).search(input);
+      throw new Error("Expected provider failure");
+    } catch (error) {
+      expect(error).toBeInstanceOf(BusinessSearchProviderError);
+      const providerError = error as BusinessSearchProviderError;
+      expect(providerError.diagnosticDetail).toContain("[redacted]");
+      expect(providerError.diagnosticDetail).not.toContain(validTestApiKey);
+    }
   });
 });
 

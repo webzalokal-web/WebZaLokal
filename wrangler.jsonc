@@ -49,7 +49,7 @@
   "vars": {
     "CONTACT_EMAIL": "webzalokal@gmail.com",
     "CONTACT_FROM": "WebZaLokal <onboarding@resend.dev>",
-    "APP_VERSION": "2026.09.01-2",
+    "APP_VERSION": "2026.09.01-3",
     "LEAD_FINDER_USERNAME": "webzalokal",
     "LEAD_SEARCH_MONTHLY_REQUEST_LIMIT": "100"
   },

@@ -124,6 +124,7 @@ type ApiError = {
   refreshRequired?: boolean;
   providerRequestCount?: number;
   diagnosticCode?: string;
+  diagnosticDetail?: string;
 };
 
 const initialForm = {
@@ -360,6 +361,7 @@ export default function LeadFinder() {
             <div className="lead-error" role="alert">
               <strong>{error.code === "ARCHIVE_MATCH_FOUND" ? "Pretraga je već arhivirana" : "Pretraga nije završena"}</strong>
               <p>{error.message ?? "Provjerite podatke i pokušajte ponovno."}</p>
+              {error.diagnosticDetail && <p className="lead-diagnostic-detail">Detalj: <code>{error.diagnosticDetail}</code></p>}
               {error.archiveMatch && (
                 <p>
                   Zadnji zapis: {displayDate(error.archiveMatch.createdAt)} · {error.archiveMatch.returnedCount} rezultata.

@@ -169,6 +169,7 @@ export class BusinessSearchProviderError extends Error {
     public readonly httpStatus: number,
     public readonly retryAfterSeconds?: number,
     public readonly diagnosticCode?: string,
+    public readonly diagnosticDetail?: string,
   ) {
     super(message);
     this.name = "BusinessSearchProviderError";
