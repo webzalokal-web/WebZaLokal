@@ -189,6 +189,33 @@ function providerErrorForStatus(status: number) {
   );
 }
 
+function fetchExceptionDiagnostic(error: unknown) {
+  const name = error instanceof Error ? error.name : "UnknownError";
+  const message = error instanceof Error ? error.message : "";
+  const normalized = `${name} ${message}`.toLowerCase();
+
+  if (normalized.includes("header") || normalized.includes("bytestring")) {
+    return "INVALID_SECRET_HEADER";
+  }
+  if (normalized.includes("abort") || normalized.includes("timeout")) {
+    return "UPSTREAM_TIMEOUT";
+  }
+  if (normalized.includes("dns") || normalized.includes("resolve")) {
+    return "UPSTREAM_DNS_FAILURE";
+  }
+  if (normalized.includes("network connection lost")) {
+    return "NETWORK_CONNECTION_LOST";
+  }
+  if (normalized.includes("connection refused") || normalized.includes("connection reset")) {
+    return "UPSTREAM_CONNECTION_FAILED";
+  }
+  return "FETCH_EXCEPTION";
+}
+
+function validGoogleApiKey(value: string) {
+  return /^[A-Za-z0-9_-]{20,200}$/.test(value);
+}
+
 export class GooglePlacesProvider implements BusinessSearchProvider {
   readonly name = GOOGLE_PLACES_PROVIDER;
   readonly maximumRequestsPerSearch = 1 as const;
@@ -199,6 +226,17 @@ export class GooglePlacesProvider implements BusinessSearchProvider {
   ) {}
 
   async search(input: LeadSearchInput): Promise<BusinessSearchProviderResult> {
+    const apiKey = this.apiKey.trim();
+    if (!validGoogleApiKey(apiKey)) {
+      throw new BusinessSearchProviderError(
+        "PROVIDER_CONFIGURATION_ERROR",
+        "Google Places API key nije spremljen u valjanom formatu.",
+        503,
+        undefined,
+        "INVALID_API_KEY_FORMAT",
+      );
+    }
+
     let response: Response;
     try {
       response = await this.fetcher(googlePlacesEndpoint, {
@@ -206,7 +244,7 @@ export class GooglePlacesProvider implements BusinessSearchProvider {
         headers: {
           Accept: "application/json",
           "Content-Type": "application/json",
-          "X-Goog-Api-Key": this.apiKey,
+          "X-Goog-Api-Key": apiKey,
           "X-Goog-FieldMask": googleFieldMask,
         },
         body: JSON.stringify({
@@ -216,10 +254,18 @@ export class GooglePlacesProvider implements BusinessSearchProvider {
       });
     } catch (error) {
       if (error instanceof BusinessSearchProviderError) throw error;
+      const diagnosticCode = fetchExceptionDiagnostic(error);
+      console.error(JSON.stringify({
+        event: "google_places_fetch_exception",
+        diagnosticCode,
+        errorName: error instanceof Error ? error.name : "UnknownError",
+      }));
       throw new BusinessSearchProviderError(
         "PROVIDER_UNREACHABLE",
-        "Google Places nije moguće kontaktirati.",
+        `Google Places nije moguće kontaktirati (${diagnosticCode}).`,
         502,
+        undefined,
+        diagnosticCode,
       );
     }
 

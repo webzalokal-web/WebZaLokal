@@ -24,6 +24,8 @@ const input = {
   refresh: false,
 };
 
+const validTestApiKey = "AIzaSyD_test_key_12345678901234567890";
+
 function providerLead(providerPlaceId: string, overrides: Partial<ProviderLead> = {}): ProviderLead {
   return {
     provider: "fake-provider",
@@ -106,12 +108,12 @@ describe("Google Places provider", () => {
       });
     };
 
-    const result = await new GooglePlacesProvider("test-key", fetcher).search(input);
+    const result = await new GooglePlacesProvider(`  ${validTestApiKey}  `, fetcher).search(input);
 
     expect(request).not.toBeNull();
     expect(request?.url).toBe("https://places.googleapis.com/v1/places:searchText");
     expect(request?.method).toBe("POST");
-    expect(request?.headers.get("X-Goog-Api-Key")).toBe("test-key");
+    expect(request?.headers.get("X-Goog-Api-Key")).toBe(validTestApiKey);
     expect(request?.headers.get("X-Goog-FieldMask")).toBe(googlePlacesRequestFieldMask);
     expect(request?.headers.get("X-Goog-FieldMask")).not.toContain("*");
     expect(request?.headers.get("X-Goog-FieldMask")).not.toContain("addressComponents");
@@ -151,11 +153,38 @@ describe("Google Places provider", () => {
       return new Response(null, { status: 429 });
     };
 
-    await expect(new GooglePlacesProvider("test-key", fetcher).search(input)).rejects.toMatchObject({
+    await expect(new GooglePlacesProvider(validTestApiKey, fetcher).search(input)).rejects.toMatchObject({
       code: "PROVIDER_RATE_LIMITED",
       httpStatus: 429,
     } satisfies Partial<BusinessSearchProviderError>);
     expect(calls).toBe(1);
+  });
+
+  it("rejects a malformed secret before making an outbound request", async () => {
+    let calls = 0;
+    const fetcher = async () => {
+      calls += 1;
+      return Response.json({ places: [] });
+    };
+
+    await expect(new GooglePlacesProvider("GOOGLE_PLACES_API_KEY=bad", fetcher).search(input))
+      .rejects.toMatchObject({
+        code: "PROVIDER_CONFIGURATION_ERROR",
+        diagnosticCode: "INVALID_API_KEY_FORMAT",
+      } satisfies Partial<BusinessSearchProviderError>);
+    expect(calls).toBe(0);
+  });
+
+  it("returns a safe diagnostic for a Worker fetch exception", async () => {
+    const fetcher = async () => {
+      throw new TypeError("Network connection lost.");
+    };
+
+    await expect(new GooglePlacesProvider(validTestApiKey, fetcher).search(input))
+      .rejects.toMatchObject({
+        code: "PROVIDER_UNREACHABLE",
+        diagnosticCode: "NETWORK_CONNECTION_LOST",
+      } satisfies Partial<BusinessSearchProviderError>);
   });
 });
 

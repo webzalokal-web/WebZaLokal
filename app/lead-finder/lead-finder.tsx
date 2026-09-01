@@ -123,6 +123,7 @@ type ApiError = {
   archiveMatch?: ArchiveMatch;
   refreshRequired?: boolean;
   providerRequestCount?: number;
+  diagnosticCode?: string;
 };
 
 const initialForm = {
@@ -244,6 +245,7 @@ export default function LeadFinder() {
           ? (payload as ApiError)
           : { success: false, message: "Pretragu nije moguće dovršiti." };
         setError(apiError);
+        await loadSummary().catch(() => undefined);
         return;
       }
 

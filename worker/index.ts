@@ -490,10 +490,16 @@ async function handleLeadFinderSearch(request: Request, env: Env) {
         event: "lead_search_provider_error",
         provider: "google-places",
         code: error.code,
+        diagnosticCode: error.diagnosticCode,
         status: error.httpStatus,
       }));
       return json(
-        { success: false, code: error.code, message: error.message },
+        {
+          success: false,
+          code: error.code,
+          message: error.message,
+          ...(error.diagnosticCode ? { diagnosticCode: error.diagnosticCode } : {}),
+        },
         error.httpStatus,
         error.retryAfterSeconds ? { "Retry-After": String(error.retryAfterSeconds) } : undefined,
       );
