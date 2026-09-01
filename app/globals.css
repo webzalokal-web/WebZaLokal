@@ -2968,7 +2968,8 @@ summary:focus-visible {
 
 .lead-search-card,
 .lead-history-card,
-.lead-results-card {
+.lead-results-card,
+.lead-archive-card {
   border: 1px solid rgba(36, 26, 22, 0.12);
   border-radius: 24px;
   background: var(--paper);
@@ -3105,6 +3106,25 @@ summary:focus-visible {
   line-height: 1.55;
 }
 
+.lead-refresh-button {
+  min-height: 38px;
+  margin-top: 12px;
+  padding: 0 13px;
+  border: 1px solid rgba(142, 47, 39, 0.25);
+  border-radius: 10px;
+  background: #fffdfa;
+  color: #8e2f27;
+  cursor: pointer;
+  font: inherit;
+  font-size: 9px;
+  font-weight: 820;
+}
+
+.lead-refresh-button:disabled {
+  cursor: wait;
+  opacity: 0.6;
+}
+
 .lead-data-note {
   margin-top: 20px;
   padding: 16px 18px;
@@ -3191,10 +3211,81 @@ summary:focus-visible {
   line-height: 1.6;
 }
 
-.lead-results-card {
+.lead-results-card,
+.lead-archive-card {
   width: min(1240px, 100%);
   margin: 20px auto 0;
   padding: 28px;
+}
+
+.lead-archive-card {
+  margin-bottom: 32px;
+}
+
+.lead-archive-card .lead-results-heading > p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 9px;
+}
+
+.lead-archive-empty {
+  min-height: 190px;
+}
+
+.lead-archive-table table {
+  min-width: 1180px;
+}
+
+.lead-archive-id {
+  min-width: 190px;
+}
+
+.lead-archive-id strong,
+.lead-archive-id span {
+  display: block;
+}
+
+.lead-archive-id strong {
+  max-width: 240px;
+  overflow: hidden;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 9px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.lead-archive-id span {
+  margin-top: 4px;
+  color: var(--muted);
+  font-size: 8px;
+}
+
+.lead-priority {
+  display: inline-flex;
+  padding: 5px 7px;
+  border-radius: 999px;
+  background: #eee9e1;
+  color: #685e57;
+  font-size: 7px;
+  font-weight: 850;
+  letter-spacing: 0.04em;
+}
+
+.lead-priority.high,
+.lead-priority.good {
+  background: rgba(76, 154, 110, 0.13);
+  color: #34714f;
+}
+
+.lead-priority.medium {
+  background: rgba(240, 197, 104, 0.25);
+  color: #815d18;
+}
+
+.lead-priority.low,
+.lead-priority.reject {
+  background: rgba(178, 59, 47, 0.08);
+  color: #8e2f27;
 }
 
 .lead-results-stats {

@@ -24,6 +24,7 @@ const env = {
   GOOGLE_PLACES_API_KEY: "google_test_secret",
   LEAD_FINDER_ACCESS_TOKEN: "lead_test_secret",
   LEAD_FINDER_USERNAME: "webzalokal",
+  LEAD_SEARCH_MONTHLY_REQUEST_LIMIT: "100",
   CONTACT_EMAIL: "webzalokal@gmail.com",
   CONTACT_FROM: "WebZaLokal <onboarding@resend.dev>",
   APP_VERSION: "test",

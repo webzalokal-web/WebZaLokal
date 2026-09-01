@@ -4,10 +4,14 @@ import {
   GooglePlacesProvider,
   googlePlacesRequestFieldMask,
 } from "../worker/lead-finder/google-places-provider";
-import { ensureLeadFinderSchema } from "../worker/lead-finder/repository";
+import {
+  ensureLeadFinderSchema,
+  getLeadArchive,
+} from "../worker/lead-finder/repository";
 import { runLeadSearch } from "../worker/lead-finder/service";
 import {
   BusinessSearchProviderError,
+  LeadArchiveMatchError,
   type BusinessSearchProvider,
   type ProviderLead,
 } from "../worker/lead-finder/types";
@@ -17,6 +21,7 @@ const input = {
   location: "Rijeka, Croatia",
   businessType: "restaurant",
   limit: 20,
+  refresh: false,
 };
 
 function providerLead(providerPlaceId: string, overrides: Partial<ProviderLead> = {}): ProviderLead {
@@ -47,6 +52,7 @@ beforeEach(async () => {
     env.LEADS_DB.prepare("DELETE FROM lead_finder_search_leads"),
     env.LEADS_DB.prepare("DELETE FROM lead_finder_searches"),
     env.LEADS_DB.prepare("DELETE FROM lead_finder_leads"),
+    env.LEADS_DB.prepare("DELETE FROM lead_finder_provider_usage"),
   ]);
 });
 
@@ -108,6 +114,10 @@ describe("Google Places provider", () => {
     expect(request?.headers.get("X-Goog-Api-Key")).toBe("test-key");
     expect(request?.headers.get("X-Goog-FieldMask")).toBe(googlePlacesRequestFieldMask);
     expect(request?.headers.get("X-Goog-FieldMask")).not.toContain("*");
+    expect(request?.headers.get("X-Goog-FieldMask")).not.toContain("addressComponents");
+    expect(request?.headers.get("X-Goog-FieldMask")).not.toContain("location");
+    expect(request?.headers.get("X-Goog-FieldMask")).not.toContain("primaryType");
+    expect(request?.headers.get("X-Goog-FieldMask")).not.toContain("googleMapsUri");
     expect(await request?.json()).toEqual({
       textQuery: "restaurant in Rijeka, Croatia",
       pageSize: 20,
@@ -118,8 +128,8 @@ describe("Google Places provider", () => {
     expect(result.leads[0]).toMatchObject({
       providerPlaceId: "ChIJ-test-1",
       name: "Konoba Test",
-      city: "Rijeka",
-      country: "Hrvatska",
+      city: null,
+      country: null,
       hasWebsite: true,
       reviewCount: 842,
     });
@@ -153,6 +163,7 @@ describe("Lead Finder persistence", () => {
   it("deduplicates repeated provider IDs and updates instead of inserting duplicates", async () => {
     const provider: BusinessSearchProvider = {
       name: "fake-provider",
+      maximumRequestsPerSearch: 1,
       async search() {
         return {
           leads: [
@@ -166,8 +177,13 @@ describe("Lead Finder persistence", () => {
       },
     };
 
-    const first = await runLeadSearch(env.LEADS_DB, provider, input);
-    const second = await runLeadSearch(env.LEADS_DB, provider, input);
+    const first = await runLeadSearch(env.LEADS_DB, provider, input, 100);
+    const second = await runLeadSearch(
+      env.LEADS_DB,
+      provider,
+      { ...input, refresh: true },
+      100,
+    );
     const stored = await env.LEADS_DB
       .prepare("SELECT COUNT(*) AS total FROM lead_finder_leads")
       .first<{ total: number }>();
@@ -193,6 +209,61 @@ describe("Lead Finder persistence", () => {
     expect(second.leads.map((lead) => lead.id)).toEqual(first.leads.map((lead) => lead.id));
   });
 
+  it("uses the archive before discovery and makes no repeated provider request by default", async () => {
+    let calls = 0;
+    const provider: BusinessSearchProvider = {
+      name: "fake-provider",
+      maximumRequestsPerSearch: 1,
+      async search() {
+        calls += 1;
+        return {
+          leads: [providerLead("place-archive")],
+          providerRequestCount: 1,
+          rawResultCount: 1,
+        };
+      },
+    };
+
+    await runLeadSearch(env.LEADS_DB, provider, input, 100);
+    await expect(runLeadSearch(env.LEADS_DB, provider, input, 100)).rejects.toBeInstanceOf(
+      LeadArchiveMatchError,
+    );
+
+    expect(calls).toBe(1);
+    const usage = await env.LEADS_DB.prepare(
+      "SELECT request_count FROM lead_finder_provider_usage WHERE provider = ?",
+    ).bind(provider.name).first<{ request_count: number }>();
+    expect(usage?.request_count).toBe(1);
+  });
+
+  it("enforces the monthly provider-request cap before a second outbound request", async () => {
+    let calls = 0;
+    const provider: BusinessSearchProvider = {
+      name: "fake-provider",
+      maximumRequestsPerSearch: 1,
+      async search() {
+        calls += 1;
+        return {
+          leads: [providerLead(`place-${calls}`)],
+          providerRequestCount: 1,
+          rawResultCount: 1,
+        };
+      },
+    };
+
+    await runLeadSearch(env.LEADS_DB, provider, input, 1);
+    await expect(runLeadSearch(
+      env.LEADS_DB,
+      provider,
+      { ...input, location: "Opatija, Croatia" },
+      1,
+    )).rejects.toMatchObject({
+      code: "MONTHLY_PROVIDER_LIMIT_REACHED",
+      httpStatus: 429,
+    } satisfies Partial<BusinessSearchProviderError>);
+    expect(calls).toBe(1);
+  });
+
   it("stores Google-independent identifiers and workflow fields, not volatile provider content", async () => {
     const columns = await env.LEADS_DB
       .prepare("PRAGMA table_info(lead_finder_leads)")
@@ -204,9 +275,15 @@ describe("Lead Finder persistence", () => {
       "provider",
       "provider_place_id",
       "business_type_hint",
+      "location_hint",
       "lead_status",
       "audit_status",
+      "contact_status",
       "email_status",
+      "priority",
+      "priority_reason",
+      "discovered_at",
+      "last_checked_at",
       "website_quality_score",
       "opportunity_score",
     ]));
@@ -223,13 +300,57 @@ describe("Lead Finder persistence", () => {
   it("persists a successful zero-result search without crashing", async () => {
     const provider: BusinessSearchProvider = {
       name: "fake-provider",
+      maximumRequestsPerSearch: 1,
       async search() {
         return { leads: [], providerRequestCount: 1, rawResultCount: 0 };
       },
     };
 
-    const result = await runLeadSearch(env.LEADS_DB, provider, { ...input, location: "Nigdje" });
+    const result = await runLeadSearch(
+      env.LEADS_DB,
+      provider,
+      { ...input, location: "Nigdje" },
+      100,
+    );
     expect(result.search.returnedCount).toBe(0);
     expect(result.leads).toEqual([]);
+  });
+
+  it("keeps low-priority archive records and their reason during an explicit refresh", async () => {
+    const provider: BusinessSearchProvider = {
+      name: "fake-provider",
+      maximumRequestsPerSearch: 1,
+      async search() {
+        return {
+          leads: [providerLead("place-low")],
+          providerRequestCount: 1,
+          rawResultCount: 1,
+        };
+      },
+    };
+
+    const first = await runLeadSearch(env.LEADS_DB, provider, input, 100);
+    await env.LEADS_DB.prepare(
+      "UPDATE lead_finder_leads SET priority = 'LOW', priority_reason = ? WHERE id = ?",
+    ).bind("Premalo recenzija", first.leads[0].id).run();
+
+    const refreshed = await runLeadSearch(
+      env.LEADS_DB,
+      provider,
+      { ...input, refresh: true },
+      100,
+    );
+    const archive = await getLeadArchive(env.LEADS_DB);
+
+    expect(refreshed.leads[0]).toMatchObject({
+      priority: "LOW",
+      priorityReason: "Premalo recenzija",
+      persistenceStatus: "updated",
+    });
+    expect(archive[0]).toMatchObject({
+      providerPlaceId: "place-low",
+      priority: "LOW",
+      priorityReason: "Premalo recenzija",
+    });
   });
 });

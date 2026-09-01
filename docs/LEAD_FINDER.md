@@ -11,6 +11,8 @@ Milestone namjerno ne radi website audit, AI scoring, pronalazak e-maila ni slan
 ```text
 /lead-finder UI
   → POST /api/lead-finder/search
+  → provjera postojeće D1 pretrage
+  → mjesečna rezervacija jednog provider zahtjeva
   → GooglePlacesProvider
   → Places API Text Search (New)
   → normalizirani rezultat
@@ -24,13 +26,14 @@ Provider je iza sučelja `BusinessSearchProvider`. Googleov raw format ne prolaz
 
 Za EEA billing račun Places sadržaj koristi se za prikaz i upravljanje prodajnim prilikama. Place ID smije se trajno spremati, dok se ostali Google detalji ne kopiraju u D1.
 
-D1 sprema:
+D1 je trajni Lead Archive i sprema:
 
 - interni lead ID;
 - provider i provider Place ID;
-- korisnički unesenu kategoriju;
-- interne buduće statuse i score stupce;
-- vrijeme prvog i zadnjeg pronalaska;
+- korisnički unesenu lokaciju i kategoriju kao interne hintove;
+- prioritet `UNCLASSIFIED`, `HIGH`, `GOOD`, `MEDIUM`, `LOW` ili `REJECT` te budući razlog odluke;
+- lead, audit, contact i email statuse te buduće score stupce;
+- `discovered_at` i `last_checked_at`;
 - korisničke parametre i metapodatke pretrage.
 
 D1 ne sprema Googleov naziv, adresu, koordinate, rating, broj recenzija, website ni telefon. Ti podaci postoje samo u svježem API odgovoru i trenutačnom prikazu. UI prikazuje obaveznu oznaku `Google Maps` i dodatne atribucije ako ih provider vrati.
@@ -51,7 +54,8 @@ Zahtijeva HTTP Basic autentikaciju i isti origin.
 {
   "location": "Rijeka, Croatia",
   "businessType": "restaurant",
-  "limit": 20
+  "limit": 20,
+  "refresh": false
 }
 ```
 
@@ -62,11 +66,19 @@ Pravila:
 - `limit`: cijeli broj 1–20;
 - jedan Google Text Search zahtjev;
 - bez paginacije i automatskog retryja;
+- minimalni FieldMask: ID, naziv, formatirana adresa, rating, broj recenzija, website, nacionalni telefon i obavezne dodatne atribucije;
+- ponovljena ista pretraga zadano se zaustavlja na D1 arhivi s `409 ARCHIVE_MATCH_FOUND` i nula provider poziva;
+- samo izričiti `refresh: true` dopušta novi provider poziv za već poznatu pretragu;
+- najviše 100 provider zahtjeva po UTC mjesecu, kontrolirano varijablom `LEAD_SEARCH_MONTHLY_REQUEST_LIMIT` i atomskim D1 brojačem;
 - najviše pet pretraga u 60 sekundi na Worker lokaciji.
 
 ### `GET /api/lead-finder/summary`
 
-Vraća ukupan broj trajno spremljenih lead ID-jeva, broj pretraga i pet zadnjih parametara pretrage. Ne dohvaća niti vraća Google poslovne detalje.
+Vraća ukupan broj trajno spremljenih lead ID-jeva, broj pretraga, pet zadnjih parametara i potrošnju mjesečnog provider limita. Ne dohvaća niti vraća Google poslovne detalje.
+
+### `GET /api/lead-finder/archive`
+
+Vraća do 200 najnovijih trajnih D1 zapisa: provider ID, interne hintove, prioritet, razlog, workflow statuse te vrijeme discoveryja i zadnje provjere. Ne radi Google poziv.
 
 ## D1
 
@@ -74,11 +86,11 @@ Binding: `LEADS_DB`
 
 Naziv baze: `webzalokal-leads`
 
-Migracija: `migrations/0001_lead_finder.sql`
+Migracije: `migrations/0001_lead_finder.sql` i `migrations/0002_lead_archive.sql`
 
 Wrangler može automatski provisionirati bazu pri prvom deployu. Worker prije prve uporabe idempotentno provjerava i po potrebi izrađuje tablice, pa deploy iz Git integracije ne ovisi o zasebnom ručnom migration koraku. Migracija ostaje kanonski zapis sheme i koristi se za lokalne/testne baze.
 
-Deduplication ključ je `provider + provider_place_id`. Ponovljena pretraga ažurira `updated_at`, `last_seen_at` i kategoriju umjesto stvaranja drugog leada.
+Deduplication ključ je `provider + provider_place_id`. Izričiti refresh ažurira `updated_at`, `last_seen_at`, `last_checked_at` i hintove umjesto stvaranja drugog leada. Postojeći prioritet, razlog, workflow statusi i izvorni `discovered_at` ostaju sačuvani. `LOW` i `REJECT` nikada ne znače brisanje.
 
 ## Produkcijska konfiguracija
 
@@ -89,6 +101,7 @@ Potrebni Cloudflare secreti:
 - postojeći `RESEND_API_KEY`.
 
 Nesecret varijabla `LEAD_FINDER_USERNAME` zadano je `webzalokal`.
+Nesecret `LEAD_SEARCH_MONTHLY_REQUEST_LIMIT` zadano je `100`, a kod nikada ne dopušta konfiguraciju iznad 1000.
 
 Google Cloud projekt treba imati uključen Places API (New), billing, API restriction samo na Places API te postavljene budžetne/quota obavijesti. Ključ nikada ne ide u frontend ili Git.
 
@@ -104,7 +117,8 @@ Nakon deploya otvorite `/lead-finder/`. Browser traži:
 3. Provjeriti naziv, adresu, rating, recenzije, website i telefon gdje postoje.
 4. Potvrditi da `API poziv` pokazuje `1`.
 5. Zabilježiti broj leadova s webom i bez weba.
-6. Ponoviti istu pretragu i potvrditi da su zapisi `Ažurirano`, a ne `Novo`.
-7. U Cloudflare logovima provjeriti strukturirani događaj `lead_search_completed`.
+6. Ponoviti istu pretragu i potvrditi `ARCHIVE_MATCH_FOUND`, nula novih Google poziva i ponuđen izričiti refresh.
+7. Pokrenuti izričiti refresh i potvrditi da su zapisi `Ažurirano`, a ne `Novo`.
+8. U Cloudflare logovima provjeriti strukturirani događaj `lead_search_completed` i mjesečni brojač.
 
 Tek rezultat tog testa koristi se za tehničke odluke Milestonea 2 — Automated Website Audit.

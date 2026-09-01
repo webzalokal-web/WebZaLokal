@@ -13,16 +13,11 @@ const maximumResponseBytes = 512_000;
 const googleFieldMask = [
   "places.id",
   "places.displayName",
-  "places.primaryType",
-  "places.primaryTypeDisplayName",
   "places.formattedAddress",
-  "places.addressComponents",
-  "places.location",
   "places.rating",
   "places.userRatingCount",
   "places.websiteUri",
   "places.nationalPhoneNumber",
-  "places.googleMapsUri",
   "places.attributions",
 ].join(",");
 
@@ -43,12 +38,6 @@ function string(value: unknown, maxLength: number) {
   return typeof value === "string" ? value.trim().slice(0, maxLength) : "";
 }
 
-function finiteNumber(value: unknown, minimum: number, maximum: number) {
-  return typeof value === "number" && Number.isFinite(value) && value >= minimum && value <= maximum
-    ? value
-    : null;
-}
-
 function nonNegativeInteger(value: unknown) {
   return typeof value === "number" && Number.isInteger(value) && value >= 0 ? value : null;
 }
@@ -66,20 +55,6 @@ function httpUrl(value: unknown) {
   } catch {
     return null;
   }
-}
-
-function addressComponent(place: JsonObject, requestedTypes: string[]) {
-  const components = Array.isArray(place.addressComponents) ? place.addressComponents : [];
-  for (const candidate of components) {
-    const component = object(candidate);
-    const types = component?.types;
-    if (!component || !Array.isArray(types)) continue;
-    if (!requestedTypes.some((type) => types.includes(type))) continue;
-    const longText = string(component.longText, 160);
-    const shortText = string(component.shortText, 40);
-    return longText || shortText || null;
-  }
-  return null;
 }
 
 function normalizeAttributions(value: unknown): ProviderAttribution[] {
@@ -110,26 +85,24 @@ function normalizePlace(value: unknown, fallbackBusinessType: string): ProviderL
   if (!providerPlaceId || !name) return null;
 
   const websiteUrl = httpUrl(place.websiteUri);
-  const location = object(place.location);
-  const primaryType = string(place.primaryType, 100);
-  const primaryTypeDisplayName = localizedText(place.primaryTypeDisplayName);
-
   return {
     provider: GOOGLE_PLACES_PROVIDER,
     providerPlaceId,
     name,
-    businessType: primaryTypeDisplayName || primaryType || fallbackBusinessType,
+    businessType: fallbackBusinessType,
     address: string(place.formattedAddress, 500) || null,
-    city: addressComponent(place, ["locality", "postal_town", "administrative_area_level_2"]),
-    country: addressComponent(place, ["country"]),
-    latitude: finiteNumber(location?.latitude, -90, 90),
-    longitude: finiteNumber(location?.longitude, -180, 180),
-    rating: finiteNumber(place.rating, 0, 5),
+    city: null,
+    country: null,
+    latitude: null,
+    longitude: null,
+    rating: typeof place.rating === "number" && Number.isFinite(place.rating) && place.rating >= 0 && place.rating <= 5
+      ? place.rating
+      : null,
     reviewCount: nonNegativeInteger(place.userRatingCount),
     websiteUrl,
     phone: string(place.nationalPhoneNumber, 100) || null,
     hasWebsite: websiteUrl !== null,
-    sourceUrl: httpUrl(place.googleMapsUri),
+    sourceUrl: null,
     attributions: normalizeAttributions(place.attributions),
   };
 }
@@ -218,6 +191,7 @@ function providerErrorForStatus(status: number) {
 
 export class GooglePlacesProvider implements BusinessSearchProvider {
   readonly name = GOOGLE_PLACES_PROVIDER;
+  readonly maximumRequestsPerSearch = 1 as const;
 
   constructor(
     private readonly apiKey: string,

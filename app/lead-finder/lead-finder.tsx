@@ -27,6 +27,13 @@ type Lead = {
   sourceUrl: string | null;
   attributions: ProviderAttribution[];
   persistenceStatus: "created" | "updated";
+  priority: "UNCLASSIFIED" | "HIGH" | "GOOD" | "MEDIUM" | "LOW" | "REJECT";
+  priorityReason: string | null;
+  leadStatus: string;
+  auditStatus: string;
+  contactStatus: string;
+  discoveredAt: string;
+  lastCheckedAt: string;
   createdAt: string;
   updatedAt: string;
 };
@@ -41,9 +48,12 @@ type SearchResponse = {
     returnedCount: number;
     rawResultCount: number;
     providerRequestCount: number;
+    monthlyProviderRequestCount: number;
+    monthlyProviderRequestLimit: number;
     createdCount: number;
     updatedCount: number;
     storedLeadCount: number;
+    refreshRequested: boolean;
   };
   leads: Lead[];
 };
@@ -63,6 +73,46 @@ type SummaryResponse = {
   storedLeadCount: number;
   searchCount: number;
   recentSearches: RecentSearch[];
+  providerUsage: {
+    provider: string;
+    periodKey: string;
+    requestCount: number;
+  };
+  monthlyProviderRequestLimit: number;
+};
+
+type LeadArchiveRecord = {
+  id: string;
+  provider: string;
+  providerPlaceId: string;
+  locationHint: string;
+  businessTypeHint: string;
+  priority: Lead["priority"];
+  priorityReason: string | null;
+  leadStatus: string;
+  auditStatus: string;
+  contactStatus: string;
+  emailStatus: string | null;
+  websiteQualityScore: number | null;
+  opportunityScore: number | null;
+  discoveredAt: string;
+  lastCheckedAt: string;
+  updatedAt: string;
+};
+
+type ArchiveResponse = {
+  success: true;
+  leads: LeadArchiveRecord[];
+};
+
+type ArchiveMatch = {
+  searchId: string;
+  provider: string;
+  location: string;
+  businessType: string;
+  requestedLimit: number;
+  returnedCount: number;
+  createdAt: string;
 };
 
 type ApiError = {
@@ -70,6 +120,9 @@ type ApiError = {
   code?: string;
   message?: string;
   fieldErrors?: Record<string, string>;
+  archiveMatch?: ArchiveMatch;
+  refreshRequired?: boolean;
+  providerRequestCount?: number;
 };
 
 const initialForm = {
@@ -111,6 +164,7 @@ export default function LeadFinder() {
   const [form, setForm] = useState(initialForm);
   const [result, setResult] = useState<SearchResponse | null>(null);
   const [summary, setSummary] = useState<SummaryResponse | null>(null);
+  const [archive, setArchive] = useState<ArchiveResponse | null>(null);
   const [loading, setLoading] = useState(false);
   const [summaryLoading, setSummaryLoading] = useState(true);
   const [error, setError] = useState<ApiError | null>(null);
@@ -138,13 +192,29 @@ export default function LeadFinder() {
     setSummary(payload as SummaryResponse);
   };
 
+  const loadArchive = async (signal?: AbortSignal) => {
+    const response = await fetch("/api/lead-finder/archive", {
+      credentials: "same-origin",
+      headers: { Accept: "application/json" },
+      signal,
+    });
+    const payload = await responsePayload(response);
+    if (!response.ok || !isRecord(payload) || payload.success !== true) {
+      throw new Error("archive_unavailable");
+    }
+    setArchive(payload as ArchiveResponse);
+  };
+
   useEffect(() => {
     const controller = new AbortController();
     const timeout = window.setTimeout(() => {
-      loadSummary(controller.signal)
-        .catch((loadError: unknown) => {
-          if (loadError instanceof DOMException && loadError.name === "AbortError") return;
-          setSummary(null);
+      Promise.allSettled([
+        loadSummary(controller.signal),
+        loadArchive(controller.signal),
+      ])
+        .then((results) => {
+          if (results[0].status === "rejected") setSummary(null);
+          if (results[1].status === "rejected") setArchive(null);
         })
         .finally(() => setSummaryLoading(false));
     }, 0);
@@ -154,8 +224,7 @@ export default function LeadFinder() {
     };
   }, []);
 
-  const submit = async (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
+  const search = async (refresh: boolean) => {
     setLoading(true);
     setError(null);
 
@@ -167,7 +236,7 @@ export default function LeadFinder() {
           Accept: "application/json",
           "Content-Type": "application/json",
         },
-        body: JSON.stringify(form),
+        body: JSON.stringify({ ...form, refresh }),
       });
       const payload = await responsePayload(response);
       if (!response.ok || !isRecord(payload) || payload.success !== true) {
@@ -179,7 +248,7 @@ export default function LeadFinder() {
       }
 
       setResult(payload as SearchResponse);
-      await loadSummary();
+      await Promise.all([loadSummary(), loadArchive()]);
     } catch {
       setError({
         success: false,
@@ -189,6 +258,11 @@ export default function LeadFinder() {
     } finally {
       setLoading(false);
     }
+  };
+
+  const submit = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    void search(false);
   };
 
   return (
@@ -210,9 +284,9 @@ export default function LeadFinder() {
 
       <section className="lead-finder-metrics" aria-label="Lead Finder sažetak">
         <article>
-          <span>Trajno spremljeni ID-jevi</span>
+          <span>Lead Archive</span>
           <strong>{summaryLoading ? "…" : summary?.storedLeadCount ?? "—"}</strong>
-          <small>Google Place ID + interni status</small>
+          <small>trajni D1 zapisi</small>
         </article>
         <article>
           <span>Dosadašnje pretrage</span>
@@ -220,9 +294,9 @@ export default function LeadFinder() {
           <small>Bez spremanja Google detalja</small>
         </article>
         <article>
-          <span>Troškovna zaštita</span>
-          <strong>1</strong>
-          <small>provider poziv po pretrazi</small>
+          <span>Google pozivi ovaj mjesec</span>
+          <strong>{summaryLoading ? "…" : `${summary?.providerUsage.requestCount ?? 0}/${summary?.monthlyProviderRequestLimit ?? 100}`}</strong>
+          <small>UTC mjesec · najviše 1 po pretrazi</small>
         </article>
       </section>
 
@@ -282,8 +356,18 @@ export default function LeadFinder() {
 
           {error && (
             <div className="lead-error" role="alert">
-              <strong>Pretraga nije završena</strong>
+              <strong>{error.code === "ARCHIVE_MATCH_FOUND" ? "Pretraga je već arhivirana" : "Pretraga nije završena"}</strong>
               <p>{error.message ?? "Provjerite podatke i pokušajte ponovno."}</p>
+              {error.archiveMatch && (
+                <p>
+                  Zadnji zapis: {displayDate(error.archiveMatch.createdAt)} · {error.archiveMatch.returnedCount} rezultata.
+                </p>
+              )}
+              {error.refreshRequired && (
+                <button className="lead-refresh-button" type="button" disabled={loading} onClick={() => void search(true)}>
+                  Osvježi uz 1 novi Google poziv
+                </button>
+              )}
             </div>
           )}
 
@@ -327,6 +411,7 @@ export default function LeadFinder() {
               <span><b>{result.search.createdCount}</b> novo</span>
               <span><b>{result.search.updatedCount}</b> osvježeno</span>
               <span><b>{result.search.providerRequestCount}</b> API poziv</span>
+              <span><b>{result.search.monthlyProviderRequestCount}/{result.search.monthlyProviderRequestLimit}</b> ovaj mjesec</span>
             </div>
           )}
         </div>
@@ -393,6 +478,61 @@ export default function LeadFinder() {
                 ) : <span key={attribution.provider}>{attribution.provider}</span>)}
               </div>
             )}
+          </div>
+        )}
+      </section>
+
+      <section className="lead-archive-card" aria-live="polite">
+        <div className="lead-results-heading">
+          <div>
+            <span>D1 source of truth</span>
+            <h2>Trajni Lead Archive</h2>
+          </div>
+          <p>{archive?.leads.length ?? 0} prikazanih · najviše 200</p>
+        </div>
+
+        {summaryLoading ? (
+          <p className="lead-history-empty">Učitavam arhivu…</p>
+        ) : !archive?.leads.length ? (
+          <div className="lead-results-empty lead-archive-empty">
+            <i aria-hidden="true">Σ</i>
+            <strong>Arhiva je spremna za prvi discovery.</strong>
+            <p>Svaki otkriveni provider ID ostaje spremljen i nakon budućeg filtriranja ili promjene prioriteta.</p>
+          </div>
+        ) : (
+          <div className="lead-table-container lead-archive-table">
+            <div className="lead-table-scroll">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Provider ID</th>
+                    <th>Lokacija</th>
+                    <th>Vrsta</th>
+                    <th>Prioritet</th>
+                    <th>Lead status</th>
+                    <th>Audit</th>
+                    <th>Kontakt</th>
+                    <th>Otkriven</th>
+                    <th>Zadnja provjera</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {archive.leads.map((lead) => (
+                    <tr key={lead.id}>
+                      <td className="lead-archive-id"><strong>{lead.providerPlaceId}</strong><span>{lead.provider}</span></td>
+                      <td>{lead.locationHint}</td>
+                      <td>{lead.businessTypeHint}</td>
+                      <td><span className={`lead-priority ${lead.priority.toLowerCase()}`}>{lead.priority}</span></td>
+                      <td>{lead.leadStatus}</td>
+                      <td>{lead.auditStatus}</td>
+                      <td>{lead.contactStatus}</td>
+                      <td><time dateTime={lead.discoveredAt}>{displayDate(lead.discoveredAt)}</time></td>
+                      <td><time dateTime={lead.lastCheckedAt}>{displayDate(lead.lastCheckedAt)}</time></td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           </div>
         )}
       </section>

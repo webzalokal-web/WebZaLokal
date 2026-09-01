@@ -1,7 +1,12 @@
 import { GooglePlacesProvider } from "./lead-finder/google-places-provider";
-import { getLeadFinderSummary } from "./lead-finder/repository";
+import { getLeadArchive, getLeadFinderSummary } from "./lead-finder/repository";
 import { runLeadSearch } from "./lead-finder/service";
-import { BusinessSearchProviderError } from "./lead-finder/types";
+import {
+  BusinessSearchProviderError,
+  LeadArchiveMatchError,
+  LEAD_SEARCH_MONTHLY_REQUEST_LIMIT_DEFAULT,
+  LEAD_SEARCH_MONTHLY_REQUEST_LIMIT_MAX,
+} from "./lead-finder/types";
 import { validateLeadSearchInput } from "./lead-finder/validation";
 
 type ContactPayload = {
@@ -141,6 +146,14 @@ function basicCredentials(request: Request) {
 
 function leadFinderConfigured(env: Env) {
   return Boolean(env.LEAD_FINDER_USERNAME && env.LEAD_FINDER_ACCESS_TOKEN);
+}
+
+function leadSearchMonthlyRequestLimit(env: Env) {
+  const configured = Number(env.LEAD_SEARCH_MONTHLY_REQUEST_LIMIT);
+  if (!Number.isInteger(configured) || configured < 1) {
+    return LEAD_SEARCH_MONTHLY_REQUEST_LIMIT_DEFAULT;
+  }
+  return Math.min(configured, LEAD_SEARCH_MONTHLY_REQUEST_LIMIT_MAX);
 }
 
 async function leadFinderAuthorized(request: Request, env: Env) {
@@ -438,22 +451,40 @@ async function handleLeadFinderSearch(request: Request, env: Env) {
   }
 
   try {
+    const monthlyRequestLimit = leadSearchMonthlyRequestLimit(env);
     const result = await runLeadSearch(
       env.LEADS_DB,
       new GooglePlacesProvider(env.GOOGLE_PLACES_API_KEY),
       validation.value,
+      monthlyRequestLimit,
     );
     console.log(JSON.stringify({
       event: "lead_search_completed",
       searchId: result.search.id,
       provider: result.provider.name,
       providerRequestCount: result.search.providerRequestCount,
+      monthlyProviderRequestCount: result.search.monthlyProviderRequestCount,
+      monthlyProviderRequestLimit: result.search.monthlyProviderRequestLimit,
       returnedCount: result.search.returnedCount,
       createdCount: result.search.createdCount,
       updatedCount: result.search.updatedCount,
     }));
     return json(result, 201);
   } catch (error) {
+    if (error instanceof LeadArchiveMatchError) {
+      return json(
+        {
+          success: false,
+          code: "ARCHIVE_MATCH_FOUND",
+          message: "Ista je pretraga već u Lead Archiveu. Novi Google poziv nije napravljen.",
+          archiveMatch: error.match,
+          refreshRequired: true,
+          providerRequestCount: 0,
+        },
+        409,
+      );
+    }
+
     if (error instanceof BusinessSearchProviderError) {
       console.error(JSON.stringify({
         event: "lead_search_provider_error",
@@ -486,7 +517,11 @@ async function handleLeadFinderSearch(request: Request, env: Env) {
 async function handleLeadFinderSummary(env: Env) {
   try {
     const summary = await getLeadFinderSummary(env.LEADS_DB);
-    return json({ success: true, ...summary });
+    return json({
+      success: true,
+      ...summary,
+      monthlyProviderRequestLimit: leadSearchMonthlyRequestLimit(env),
+    });
   } catch (error) {
     console.error(JSON.stringify({
       event: "lead_summary_internal_error",
@@ -497,6 +532,26 @@ async function handleLeadFinderSummary(env: Env) {
         success: false,
         code: "LEAD_SUMMARY_FAILED",
         message: "Sažetak spremljenih leadova trenutačno nije dostupan.",
+      },
+      500,
+    );
+  }
+}
+
+async function handleLeadFinderArchive(env: Env) {
+  try {
+    const leads = await getLeadArchive(env.LEADS_DB);
+    return json({ success: true, leads });
+  } catch (error) {
+    console.error(JSON.stringify({
+      event: "lead_archive_internal_error",
+      error: error instanceof Error ? error.message : String(error),
+    }));
+    return json(
+      {
+        success: false,
+        code: "LEAD_ARCHIVE_FAILED",
+        message: "Lead Archive trenutačno nije dostupan.",
       },
       500,
     );
@@ -521,6 +576,9 @@ async function handleLeadFinderApi(request: Request, env: Env, pathname: string)
   }
   if (pathname === "/api/lead-finder/summary" && request.method === "GET") {
     return handleLeadFinderSummary(env);
+  }
+  if (pathname === "/api/lead-finder/archive" && request.method === "GET") {
+    return handleLeadFinderArchive(env);
   }
   return json(
     { success: false, code: "NOT_FOUND", message: "Lead Finder endpoint nije pronađen." },

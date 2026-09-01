@@ -49,8 +49,9 @@
   "vars": {
     "CONTACT_EMAIL": "webzalokal@gmail.com",
     "CONTACT_FROM": "WebZaLokal <onboarding@resend.dev>",
-    "APP_VERSION": "2026.08.27-1",
-    "LEAD_FINDER_USERNAME": "webzalokal"
+    "APP_VERSION": "2026.09.01-1",
+    "LEAD_FINDER_USERNAME": "webzalokal",
+    "LEAD_SEARCH_MONTHLY_REQUEST_LIMIT": "100"
   },
   "secrets": {
     "required": ["RESEND_API_KEY", "GOOGLE_PLACES_API_KEY", "LEAD_FINDER_ACCESS_TOKEN"]
