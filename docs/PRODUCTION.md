@@ -29,6 +29,17 @@ Jedna pretraga:
 
 Ponovljena pretraga zadano ne troši Google poziv. Novi refresh za poznati upit zahtijeva izričitu potvrdu u UI-ju. `LOW` i `REJECT` leadovi ostaju u D1 arhivi.
 
+Website audit za odabrani lead s webom:
+
+1. prvo provjerava postoji li spremljeni D1 audit;
+2. za novi run dohvaća homepage preko Firecrawla i iz stvarnih internih linkova bira do četiri relevantne stranice;
+3. radi najviše jedan PageSpeed mobile/performance poziv za homepage;
+4. sprema page-level sadržaj, metadata/linkove i `PASS` / `FAIL` / `UNKNOWN` evidence;
+5. zadržava djelomično uspješne podatke pod statusom `PARTIAL`;
+6. ponovno otvaranje samo čita D1, dok novi provider pozivi zahtijevaju izričiti `Refresh / Re-audit`.
+
+Firecrawl i PageSpeed nemaju crawl petlje ni automatske retryje. Firecrawl je ograničen na pet pokušaja po audit runu, a PageSpeed na jedan. Svi audit endpointi ostaju iza iste interne autentikacije.
+
 Operativna dokumentacija: [`LEAD_FINDER.md`](LEAD_FINDER.md).
 
 ## Analytics Engine shema
@@ -65,7 +76,7 @@ GitHub Actions workflow: `.github/workflows/monitor.yml`. Raspored: svaka 6 sata
 
 - poslati probni upit i potvrditi dostavu na službeni e-mail;
 - potvrditi da je Resend račun otvoren adresom `webzalokal@gmail.com` i da je Cloudflare secret `RESEND_API_KEY` postavljen;
-- potvrditi da su `GOOGLE_PLACES_API_KEY` i `LEAD_FINDER_ACCESS_TOKEN` postavljeni kao Cloudflare secreti;
+- potvrditi da su `GOOGLE_PLACES_API_KEY`, `FIRECRAWL_API_KEY` i `LEAD_FINDER_ACCESS_TOKEN` postavljeni kao Cloudflare secreti;
 - ograničiti Google ključ na Places API (New) i postaviti billing/quota obavijesti;
 - izvesti prvi `Rijeka, Croatia + restaurant + 20` test, potvrditi archive block pri ponavljanju te zatim izričiti refresh radi provjere deduplikacije;
 - u Cloudflare Analytics Engineu potvrditi dolazak prvih događaja;

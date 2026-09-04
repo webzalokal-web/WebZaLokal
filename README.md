@@ -23,7 +23,7 @@ npm run check
 - prima `POST /api/contact`, provjerava i ograničava upite te ih putem Resenda dostavlja na `webzalokal@gmail.com`;
 - prima dopuštene događaje na `POST /api/events` i zapisuje ih u Analytics Engine bez kolačića i osobnih identifikatora;
 - izlaže `GET /api/health` za monitoring;
-- izlaže zaštićeni Lead Finder search, summary i archive API;
+- izlaže zaštićeni Lead Finder search, archive i website-audit API;
 - preko Google Places Text Searcha pronalazi do 20 leadova jednim provider pozivom i u D1 deduplicira dopuštene trajne identifikatore;
 - uključuje Cloudflare observability, sigurnosna zaglavlja i četiri rate-limit pravila.
 
@@ -33,13 +33,13 @@ npm run check
 
 ## Lead Finder
 
-`/lead-finder/` je HTTP Basic zaštićena interna radna površina za Business Search. Traži lokaciju, vrstu poslovanja i 1–20 rezultata. Google poslovni detalji prikazuju se svježe; D1 je trajni Lead Archive za Place ID-jeve, interne identifikatore, priority/reason, workflow statuse i povijest. Ista se pretraga ne plaća ponovno bez izričitog refresha, a aplikacija ima tvrdi mjesečni provider limit.
+`/lead-finder/` je HTTP Basic zaštićena interna radna površina za Business Search i evidence-first website audit. Google poslovni detalji prikazuju se svježe; D1 je trajni Lead Archive i čuva audit runove, pregledane stranice, strukturirane signale i ograničeni sadržaj. Postojeća pretraga ili audit ne pozivaju vanjski provider bez izričitog refresha.
 
-Potrebni secreti su `GOOGLE_PLACES_API_KEY` i `LEAD_FINDER_ACCESS_TOKEN`. Potpuna arhitektura, storage granica i prvi E2E scenarij dokumentirani su u [`docs/LEAD_FINDER.md`](docs/LEAD_FINDER.md).
+Potrebni secreti su `GOOGLE_PLACES_API_KEY`, `FIRECRAWL_API_KEY` i `LEAD_FINDER_ACCESS_TOKEN`. Potpuna arhitektura, storage granica i E2E scenariji dokumentirani su u [`docs/LEAD_FINDER.md`](docs/LEAD_FINDER.md).
 
 ## Objava
 
-Resend, Google Places i Lead Finder pristupni ključevi spremaju se kao Cloudflare secreti; nikada se ne zapisuju u repozitorij.
+Resend, Google Places, Firecrawl i Lead Finder pristupni ključevi spremaju se kao Cloudflare secreti; nikada se ne zapisuju u repozitorij.
 
 ```bash
 npm run deploy

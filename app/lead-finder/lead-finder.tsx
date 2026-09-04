@@ -127,6 +127,76 @@ type ApiError = {
   diagnosticDetail?: string;
 };
 
+type AuditCheckStatus = "PASS" | "FAIL" | "UNKNOWN";
+type AuditStatus = "PENDING" | "RUNNING" | "COMPLETE" | "PARTIAL" | "FAILED";
+
+type AuditSignal = {
+  status: AuditCheckStatus;
+  evidence: Array<{ pageUrl: string | null; detail: string; value?: string | number | boolean | null }>;
+};
+
+type PageSpeedMobile = {
+  status: "SUCCESS" | "UNAVAILABLE";
+  performanceScore: number | null;
+  metrics: Record<string, {
+    displayValue: string | null;
+    numericValue: number | null;
+    numericUnit: string | null;
+    score: number | null;
+  }>;
+  errorCode: string | null;
+};
+
+type AuditSummary = {
+  id: string;
+  leadId: string;
+  websiteUrl: string;
+  finalUrl: string | null;
+  auditStatus: AuditStatus;
+  auditedAt: string | null;
+  firecrawlPagesUsed: number;
+  pagesChecked: number;
+  pageSpeedMobile: PageSpeedMobile | null;
+  errorDetails: Array<{ component: string; code: string; pageUrl: string | null }>;
+};
+
+type AuditPage = {
+  id: string;
+  position: number;
+  pageKind: "homepage" | "contact" | "services" | "about" | "commercial";
+  requestedUrl: string;
+  finalUrl: string | null;
+  status: "SUCCESS" | "FAILED";
+  httpStatus: number | null;
+  title: string | null;
+  metaDescription: string | null;
+  headings: Array<{ level: 1 | 2 | 3; text: string }>;
+  relevantLinks: Array<{ url: string; text: string | null; kind: string }>;
+  technicalSignals: Record<string, AuditSignal>;
+  conversionSignals: Record<string, AuditSignal>;
+  seoSignals: Record<string, AuditSignal>;
+  errorCode: string | null;
+};
+
+type AuditDetail = AuditSummary & {
+  refreshRequested: boolean;
+  startedAt: string;
+  firecrawlAttemptCount: number;
+  pageSpeedAttemptCount: number;
+  technicalSignals: Record<string, AuditSignal>;
+  conversionSignals: Record<string, AuditSignal>;
+  seoSignals: Record<string, AuditSignal>;
+  contentSignals: Record<string, unknown>;
+  pages: AuditPage[];
+};
+
+type AuditsResponse = { success: true; audits: AuditSummary[] };
+type AuditDetailResponse = { success: true; audit: AuditDetail };
+type AuditRunResponse = AuditDetailResponse & {
+  reused: boolean;
+  externalRequests: { firecrawl: number; pageSpeed: number };
+};
+
 const initialForm = {
   location: "Rijeka, Croatia",
   businessType: "restaurant",
@@ -162,6 +232,48 @@ function websiteLabel(value: string) {
   }
 }
 
+const signalLabels: Record<string, string> = {
+  availability: "Dostupnost",
+  https: "HTTPS",
+  mobileViewport: "Mobile viewport",
+  reviewedPages: "Pregledane stranice",
+  title: "Title",
+  metaDescription: "Meta description",
+  h1: "H1",
+  phone: "Telefon",
+  email: "Javni email",
+  contactPage: "Kontakt stranica",
+  contactForm: "Kontakt forma",
+  booking: "Rezervacija",
+  onlineOrdering: "Online naručivanje",
+  primaryCta: "Glavni CTA",
+  messaging: "Messaging",
+  socialProfiles: "Društvene mreže",
+  mapsDirections: "Karta / upute",
+  menuServicesPricing: "Meni / usluge / cijene",
+};
+
+function SignalList({ signals }: { signals: Record<string, AuditSignal> }) {
+  return (
+    <ul className="audit-signal-list">
+      {Object.entries(signals).map(([key, signal]) => (
+        <li key={key}>
+          <span className={`audit-check ${signal.status.toLowerCase()}`}>{signal.status}</span>
+          <div>
+            <strong>{signalLabels[key] ?? key}</strong>
+            <small>
+              {signal.evidence[0]?.detail ?? "Nema evidence detalja."}
+              {signal.evidence[0]?.value !== undefined && signal.evidence[0]?.value !== null
+                ? ` · ${String(signal.evidence[0].value)}`
+                : ""}
+            </small>
+          </div>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
 export default function LeadFinder() {
   const [form, setForm] = useState(initialForm);
   const [result, setResult] = useState<SearchResponse | null>(null);
@@ -170,6 +282,15 @@ export default function LeadFinder() {
   const [loading, setLoading] = useState(false);
   const [summaryLoading, setSummaryLoading] = useState(true);
   const [error, setError] = useState<ApiError | null>(null);
+  const [audits, setAudits] = useState<AuditsResponse | null>(null);
+  const [selectedAudit, setSelectedAudit] = useState<AuditDetail | null>(null);
+  const [auditLoadingLeadId, setAuditLoadingLeadId] = useState<string | null>(null);
+  const [auditError, setAuditError] = useState<string | null>(null);
+
+  const auditsByLead = useMemo(
+    () => new Map((audits?.audits ?? []).map((audit) => [audit.leadId, audit])),
+    [audits],
+  );
 
   const attributions = useMemo(() => {
     const unique = new Map<string, ProviderAttribution>();
@@ -207,16 +328,31 @@ export default function LeadFinder() {
     setArchive(payload as ArchiveResponse);
   };
 
+  const loadAudits = async (signal?: AbortSignal) => {
+    const response = await fetch("/api/lead-finder/audits", {
+      credentials: "same-origin",
+      headers: { Accept: "application/json" },
+      signal,
+    });
+    const payload = await responsePayload(response);
+    if (!response.ok || !isRecord(payload) || payload.success !== true) {
+      throw new Error("audits_unavailable");
+    }
+    setAudits(payload as AuditsResponse);
+  };
+
   useEffect(() => {
     const controller = new AbortController();
     const timeout = window.setTimeout(() => {
       Promise.allSettled([
         loadSummary(controller.signal),
         loadArchive(controller.signal),
+        loadAudits(controller.signal),
       ])
         .then((results) => {
           if (results[0].status === "rejected") setSummary(null);
           if (results[1].status === "rejected") setArchive(null);
+          if (results[2].status === "rejected") setAudits(null);
         })
         .finally(() => setSummaryLoading(false));
     }, 0);
@@ -251,7 +387,7 @@ export default function LeadFinder() {
       }
 
       setResult(payload as SearchResponse);
-      await Promise.all([loadSummary(), loadArchive()]);
+      await Promise.all([loadSummary(), loadArchive(), loadAudits()]);
     } catch {
       setError({
         success: false,
@@ -268,11 +404,56 @@ export default function LeadFinder() {
     void search(false);
   };
 
+  const openAudit = async (leadId: string) => {
+    setAuditLoadingLeadId(leadId);
+    setAuditError(null);
+    try {
+      const response = await fetch(`/api/lead-finder/audits/${leadId}`, {
+        credentials: "same-origin",
+        headers: { Accept: "application/json" },
+      });
+      const payload = await responsePayload(response);
+      if (!response.ok || !isRecord(payload) || payload.success !== true) {
+        throw new Error(isRecord(payload) && typeof payload.message === "string" ? payload.message : "Audit nije dostupan.");
+      }
+      setSelectedAudit((payload as AuditDetailResponse).audit);
+    } catch (caught) {
+      setAuditError(caught instanceof Error ? caught.message : "Audit nije dostupan.");
+    } finally {
+      setAuditLoadingLeadId(null);
+    }
+  };
+
+  const runAudit = async (leadId: string, websiteUrl: string | null, refresh: boolean) => {
+    if (refresh && !window.confirm("Re-audit će napraviti nove Firecrawl pozive i jedan PageSpeed poziv. Nastaviti?")) return;
+    setAuditLoadingLeadId(leadId);
+    setAuditError(null);
+    try {
+      const response = await fetch("/api/lead-finder/audits", {
+        method: "POST",
+        credentials: "same-origin",
+        headers: { Accept: "application/json", "Content-Type": "application/json" },
+        body: JSON.stringify({ leadId, websiteUrl, refresh }),
+      });
+      const payload = await responsePayload(response);
+      if (!response.ok || !isRecord(payload) || payload.success !== true) {
+        throw new Error(isRecord(payload) && typeof payload.message === "string" ? payload.message : "Audit nije moguće pokrenuti.");
+      }
+      const audit = (payload as AuditRunResponse).audit;
+      setSelectedAudit(audit);
+      await Promise.all([loadAudits(), loadArchive()]);
+    } catch (caught) {
+      setAuditError(caught instanceof Error ? caught.message : "Audit nije moguće pokrenuti.");
+    } finally {
+      setAuditLoadingLeadId(null);
+    }
+  };
+
   return (
     <main className="lead-finder-shell">
       <header className="lead-finder-header">
         <Link className="brand" href="/"><span className="brand-mark">WZL</span><span>WebZaLokal</span></Link>
-        <div><span className="lead-finder-badge">Interno · Milestone 1</span><strong>Lead Finder</strong></div>
+        <div><span className="lead-finder-badge">Interno · Milestone 2</span><strong>Lead Finder</strong></div>
         <Link className="lead-finder-back" href="/studio/">Studio Lite →</Link>
       </header>
 
@@ -446,11 +627,15 @@ export default function LeadFinder() {
                     <th>Recenzije</th>
                     <th>Website</th>
                     <th>Telefon</th>
+                    <th>Audit</th>
                     <th>D1</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {result.leads.map((lead) => (
+                  {result.leads.map((lead) => {
+                    const existingAudit = auditsByLead.get(lead.id);
+                    const auditBusy = auditLoadingLeadId === lead.id;
+                    return (
                     <tr key={lead.id}>
                       <td className="lead-business-cell">
                         <strong>{lead.name}</strong>
@@ -468,9 +653,22 @@ export default function LeadFinder() {
                         )}
                       </td>
                       <td>{lead.phone ? <a className="lead-phone" href={`tel:${lead.phone}`}>{lead.phone}</a> : <span className="lead-missing">—</span>}</td>
+                      <td>
+                        {existingAudit ? (
+                          <button className="audit-table-button" type="button" disabled={auditBusy} onClick={() => void openAudit(lead.id)}>
+                            {auditBusy ? "Učitavam…" : existingAudit.auditStatus}
+                          </button>
+                        ) : lead.websiteUrl ? (
+                          <button className="audit-table-button start" type="button" disabled={auditBusy} onClick={() => void runAudit(lead.id, lead.websiteUrl, false)}>
+                            {auditBusy ? "Auditiram…" : "Auditiraj"}
+                          </button>
+                        ) : (
+                          <span className="lead-missing">Bez websitea</span>
+                        )}
+                      </td>
                       <td><span className={`lead-persisted ${lead.persistenceStatus}`}>{lead.persistenceStatus === "created" ? "Novo" : "Ažurirano"}</span></td>
                     </tr>
-                  ))}
+                  )})}
                 </tbody>
               </table>
             </div>
@@ -483,6 +681,75 @@ export default function LeadFinder() {
               </div>
             )}
           </div>
+        )}
+      </section>
+
+      <section className="website-audit-card" aria-live="polite">
+        <div className="lead-results-heading">
+          <div>
+            <span>Evidence layer · D1</span>
+            <h2>{selectedAudit ? `Website audit · ${websiteLabel(selectedAudit.finalUrl ?? selectedAudit.websiteUrl)}` : "Automated Website Audit"}</h2>
+          </div>
+          {selectedAudit && (
+            <div className="audit-heading-actions">
+              <span className={`audit-status ${selectedAudit.auditStatus.toLowerCase()}`}>{selectedAudit.auditStatus}</span>
+              <button
+                type="button"
+                disabled={auditLoadingLeadId === selectedAudit.leadId}
+                onClick={() => void runAudit(selectedAudit.leadId, selectedAudit.websiteUrl, true)}
+              >
+                {auditLoadingLeadId === selectedAudit.leadId ? "Re-auditiram…" : "Refresh / Re-audit"}
+              </button>
+            </div>
+          )}
+        </div>
+
+        {auditError && <div className="lead-error audit-error" role="alert"><strong>Audit nije završen</strong><p>{auditError}</p></div>}
+
+        {!selectedAudit ? (
+          <div className="lead-results-empty audit-empty">
+            <i aria-hidden="true">◎</i>
+            <strong>Odaberi lead koji ima website.</strong>
+            <p>Prvi audit koristi najviše 5 Firecrawl stranica i 1 PageSpeed mobile poziv. Ponovno otvaranje spremljenog audita nema vanjskih poziva.</p>
+          </div>
+        ) : (
+          <>
+            <div className="audit-summary-grid">
+              <article><span>Status</span><strong>{selectedAudit.auditStatus}</strong></article>
+              <article><span>Zadnji audit</span><strong>{selectedAudit.auditedAt ? displayDate(selectedAudit.auditedAt) : "U tijeku"}</strong></article>
+              <article><span>Stranice</span><strong>{selectedAudit.firecrawlPagesUsed}/{selectedAudit.pagesChecked}</strong><small>uspješno / pregledano</small></article>
+              <article><span>PageSpeed mobile</span><strong>{selectedAudit.pageSpeedMobile?.performanceScore ?? "—"}</strong><small>{selectedAudit.pageSpeedMobile?.status ?? "UNAVAILABLE"}</small></article>
+            </div>
+
+            <div className="audit-signal-columns">
+              <article><h3>Technical</h3><SignalList signals={selectedAudit.technicalSignals} /></article>
+              <article><h3>SEO</h3><SignalList signals={selectedAudit.seoSignals} /></article>
+              <article><h3>Conversion</h3><SignalList signals={selectedAudit.conversionSignals} /></article>
+            </div>
+
+            <div className="audit-pages">
+              <div className="audit-section-heading"><h3>Pregledane stranice</h3><span>Maksimalno 5 po audit runu</span></div>
+              <ol>
+                {selectedAudit.pages.map((page) => (
+                  <li key={page.id}>
+                    <span className={`audit-check ${page.status === "SUCCESS" ? "pass" : "fail"}`}>{page.status}</span>
+                    <div>
+                      <strong>{page.pageKind} · {page.title ?? websiteLabel(page.finalUrl ?? page.requestedUrl)}</strong>
+                      <a href={page.finalUrl ?? page.requestedUrl} target="_blank" rel="noreferrer">{page.finalUrl ?? page.requestedUrl}</a>
+                    </div>
+                    <span>{page.httpStatus ?? page.errorCode ?? "UNKNOWN"}</span>
+                  </li>
+                ))}
+              </ol>
+            </div>
+
+            {selectedAudit.errorDetails.length > 0 && (
+              <div className="audit-errors">
+                <strong>Partial / error detalji</strong>
+                <ul>{selectedAudit.errorDetails.map((detail, index) => <li key={`${detail.component}-${detail.code}-${index}`}>{detail.component}: {detail.code}</li>)}</ul>
+              </div>
+            )}
+          </>
         )}
       </section>
 
@@ -521,19 +788,27 @@ export default function LeadFinder() {
                   </tr>
                 </thead>
                 <tbody>
-                  {archive.leads.map((lead) => (
+                  {archive.leads.map((lead) => {
+                    const existingAudit = auditsByLead.get(lead.id);
+                    return (
                     <tr key={lead.id}>
                       <td className="lead-archive-id"><strong>{lead.providerPlaceId}</strong><span>{lead.provider}</span></td>
                       <td>{lead.locationHint}</td>
                       <td>{lead.businessTypeHint}</td>
                       <td><span className={`lead-priority ${lead.priority.toLowerCase()}`}>{lead.priority}</span></td>
                       <td>{lead.leadStatus}</td>
-                      <td>{lead.auditStatus}</td>
+                      <td>
+                        {existingAudit ? (
+                          <button className="audit-table-button" type="button" disabled={auditLoadingLeadId === lead.id} onClick={() => void openAudit(lead.id)}>
+                            {auditLoadingLeadId === lead.id ? "Učitavam…" : existingAudit.auditStatus}
+                          </button>
+                        ) : lead.auditStatus}
+                      </td>
                       <td>{lead.contactStatus}</td>
                       <td><time dateTime={lead.discoveredAt}>{displayDate(lead.discoveredAt)}</time></td>
                       <td><time dateTime={lead.lastCheckedAt}>{displayDate(lead.lastCheckedAt)}</time></td>
                     </tr>
-                  ))}
+                  )})}
                 </tbody>
               </table>
             </div>

@@ -23,6 +23,7 @@ const env = {
   RESEND_API_KEY: "re_test_secret",
   GOOGLE_PLACES_API_KEY: "google_test_secret",
   LEAD_FINDER_ACCESS_TOKEN: "lead_test_secret",
+  FIRECRAWL_API_KEY: "fc_test_secret_12345678901234567890",
   LEAD_FINDER_USERNAME: "webzalokal",
   LEAD_SEARCH_MONTHLY_REQUEST_LIMIT: "100",
   CONTACT_EMAIL: "webzalokal@gmail.com",
@@ -107,6 +108,16 @@ assert.equal(await protectedLeadFinder.text(), "static-asset");
 const unauthorizedLeadApi = await worker.fetch(request("/api/lead-finder/summary"), env);
 assert.equal(unauthorizedLeadApi.status, 401);
 
+const unauthorizedAuditList = await worker.fetch(request("/api/lead-finder/audits"), env);
+assert.equal(unauthorizedAuditList.status, 401);
+
+const unauthorizedAuditRun = await worker.fetch(request("/api/lead-finder/audits", {
+  method: "POST",
+  headers: { Origin: "https://webzalokal.test", "Content-Type": "application/json" },
+  body: JSON.stringify({ leadId: "a".repeat(32), websiteUrl: "https://example.com", refresh: false }),
+}), env);
+assert.equal(unauthorizedAuditRun.status, 401);
+
 const invalidLeadSearch = await worker.fetch(request("/api/lead-finder/search", {
   method: "POST",
   headers: {
@@ -129,6 +140,29 @@ const crossOriginLeadSearch = await worker.fetch(request("/api/lead-finder/searc
   body: JSON.stringify({ location: "Rijeka", businessType: "restaurant", limit: 20 }),
 }), env);
 assert.equal(crossOriginLeadSearch.status, 403);
+
+const invalidAuditRun = await worker.fetch(request("/api/lead-finder/audits", {
+  method: "POST",
+  headers: {
+    Authorization: leadAuthorization,
+    Origin: "https://webzalokal.test",
+    "Content-Type": "application/json",
+  },
+  body: JSON.stringify({ leadId: "invalid", websiteUrl: "http://localhost/admin", refresh: false }),
+}), env);
+assert.equal(invalidAuditRun.status, 400);
+assert.equal((await invalidAuditRun.json()).code, "VALIDATION_ERROR");
+
+const crossOriginAuditRun = await worker.fetch(request("/api/lead-finder/audits", {
+  method: "POST",
+  headers: {
+    Authorization: leadAuthorization,
+    Origin: "https://example.test",
+    "Content-Type": "application/json",
+  },
+  body: JSON.stringify({ leadId: "a".repeat(32), websiteUrl: "https://example.com", refresh: false }),
+}), env);
+assert.equal(crossOriginAuditRun.status, 403);
 
 const originalFetch = globalThis.fetch;
 let upstreamRequest;

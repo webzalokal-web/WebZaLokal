@@ -1,4 +1,13 @@
 import { GooglePlacesProvider } from "./lead-finder/google-places-provider";
+import { FirecrawlProvider } from "./lead-finder/firecrawl-provider";
+import { PageSpeedProvider } from "./lead-finder/pagespeed-provider";
+import {
+  getLatestWebsiteAudit,
+  getWebsiteAuditSummaries,
+} from "./lead-finder/audit-repository";
+import { runWebsiteAudit } from "./lead-finder/audit-service";
+import { WebsiteAuditError, type WebsiteAuditDetail } from "./lead-finder/audit-types";
+import { validateWebsiteAuditInput } from "./lead-finder/audit-validation";
 import { getLeadArchive, getLeadFinderSummary } from "./lead-finder/repository";
 import { runLeadSearch } from "./lead-finder/service";
 import {
@@ -566,6 +575,109 @@ async function handleLeadFinderArchive(env: Env) {
   }
 }
 
+function browserSafeAudit(audit: WebsiteAuditDetail) {
+  return {
+    ...audit,
+    pages: audit.pages.map((storedPage) => {
+      const { markdown, cleanedText, ...page } = storedPage;
+      void markdown;
+      void cleanedText;
+      return page;
+    }),
+  };
+}
+
+async function handleWebsiteAuditList(env: Env) {
+  try {
+    const audits = await getWebsiteAuditSummaries(env.LEADS_DB);
+    return json({ success: true, audits });
+  } catch {
+    console.error(JSON.stringify({ event: "website_audit_list_failed" }));
+    return json(
+      { success: false, code: "AUDIT_LIST_FAILED", message: "Audit sažeci trenutačno nisu dostupni." },
+      500,
+    );
+  }
+}
+
+async function handleWebsiteAuditDetail(env: Env, leadId: string) {
+  if (!/^[a-f0-9]{32}$/.test(leadId)) {
+    return json({ success: false, code: "INVALID_LEAD_ID", message: "Lead ID nije valjan." }, 400);
+  }
+  try {
+    const audit = await getLatestWebsiteAudit(env.LEADS_DB, leadId);
+    if (!audit) {
+      return json({ success: false, code: "AUDIT_NOT_FOUND", message: "Lead još nema website audit." }, 404);
+    }
+    return json({ success: true, audit: browserSafeAudit(audit) });
+  } catch {
+    console.error(JSON.stringify({ event: "website_audit_detail_failed", leadId }));
+    return json(
+      { success: false, code: "AUDIT_DETAIL_FAILED", message: "Website audit trenutačno nije dostupan." },
+      500,
+    );
+  }
+}
+
+async function handleWebsiteAuditRun(request: Request, env: Env) {
+  if (!sameOrigin(request)) {
+    return json({ success: false, code: "ORIGIN_REJECTED", message: "Zahtjev nije dopušten." }, 403);
+  }
+  const contentLength = Number(request.headers.get("Content-Length") ?? "0");
+  if (contentLength > 8_192) {
+    return json({ success: false, code: "PAYLOAD_TOO_LARGE", message: "Zahtjev je prevelik." }, 413);
+  }
+
+  const rate = await env.LEAD_SEARCH_LIMITER.limit({ key: "lead-finder-audit" });
+  if (!rate.success) {
+    return json(
+      { success: false, code: "AUDIT_RATE_LIMITED", message: "Dosegnut je sigurnosni limit audita. Pokušajte ponovno za minutu." },
+      429,
+      { "Retry-After": "60" },
+    );
+  }
+
+  let payload: Record<string, unknown>;
+  try {
+    payload = await parseJson<Record<string, unknown>>(request);
+  } catch {
+    return json({ success: false, code: "INVALID_JSON", message: "Audit podaci nisu ispravni." }, 400);
+  }
+  const validation = validateWebsiteAuditInput(payload);
+  if (!validation.success) {
+    return json(
+      { success: false, code: "VALIDATION_ERROR", message: "Provjerite audit podatke.", fieldErrors: validation.fieldErrors },
+      400,
+    );
+  }
+
+  try {
+    const result = await runWebsiteAudit(
+      env.LEADS_DB,
+      new FirecrawlProvider(env.FIRECRAWL_API_KEY ?? ""),
+      new PageSpeedProvider(),
+      validation.value,
+    );
+    console.log(JSON.stringify({
+      event: result.reused ? "website_audit_reused" : "website_audit_completed",
+      auditId: result.audit.id,
+      leadId: result.audit.leadId,
+      status: result.audit.auditStatus,
+      firecrawlRequests: result.externalRequests.firecrawl,
+      pageSpeedRequests: result.externalRequests.pageSpeed,
+      pagesChecked: result.audit.pagesChecked,
+    }));
+    return json({ ...result, audit: browserSafeAudit(result.audit) }, result.reused ? 200 : 201);
+  } catch (error) {
+    if (error instanceof WebsiteAuditError) {
+      console.error(JSON.stringify({ event: "website_audit_rejected", code: error.code, status: error.httpStatus }));
+      return json({ success: false, code: error.code, message: error.message }, error.httpStatus);
+    }
+    console.error(JSON.stringify({ event: "website_audit_internal_error" }));
+    return json({ success: false, code: "AUDIT_FAILED", message: "Website audit nije moguće dovršiti." }, 500);
+  }
+}
+
 async function handleLeadFinderApi(request: Request, env: Env, pathname: string) {
   if (!leadFinderConfigured(env)) {
     return json(
@@ -587,6 +699,15 @@ async function handleLeadFinderApi(request: Request, env: Env, pathname: string)
   }
   if (pathname === "/api/lead-finder/archive" && request.method === "GET") {
     return handleLeadFinderArchive(env);
+  }
+  if (pathname === "/api/lead-finder/audits" && request.method === "GET") {
+    return handleWebsiteAuditList(env);
+  }
+  if (pathname === "/api/lead-finder/audits" && request.method === "POST") {
+    return handleWebsiteAuditRun(request, env);
+  }
+  if (pathname.startsWith("/api/lead-finder/audits/") && request.method === "GET") {
+    return handleWebsiteAuditDetail(env, pathname.slice("/api/lead-finder/audits/".length));
   }
   return json(
     { success: false, code: "NOT_FOUND", message: "Lead Finder endpoint nije pronađen." },
