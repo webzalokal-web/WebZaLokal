@@ -108,6 +108,17 @@ assert.equal(await protectedLeadFinder.text(), "static-asset");
 const unauthorizedLeadApi = await worker.fetch(request("/api/lead-finder/summary"), env);
 assert.equal(unauthorizedLeadApi.status, 401);
 
+for (const method of ["GET", "POST"]) {
+  const response = await worker.fetch(request("/api/lead-finder/analyses", { method }), env);
+  assert.equal(response.status, 401);
+}
+const rejectedAnalysisOrigin = await worker.fetch(request("/api/lead-finder/analyses", {
+  method: "POST",
+  headers: { Authorization: leadAuthorization, Origin: "https://other.example", "Content-Type": "application/json" },
+  body: "{}",
+}), env);
+assert.equal(rejectedAnalysisOrigin.status, 403);
+
 const unauthorizedAuditList = await worker.fetch(request("/api/lead-finder/audits"), env);
 assert.equal(unauthorizedAuditList.status, 401);
 

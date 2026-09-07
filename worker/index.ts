@@ -1,4 +1,8 @@
 import { GooglePlacesProvider } from "./lead-finder/google-places-provider";
+import { OpenAIAnalysisProvider } from "./lead-finder/openai-analysis-provider";
+import { runAnalysis, validateAnalysisRequest } from "./lead-finder/analysis-service";
+import { analysisUsage, getAnalysis } from "./lead-finder/analysis-repository";
+import { AnalysisError, ANALYSIS_MONTHLY_LIMIT } from "./lead-finder/analysis-types";
 import { FirecrawlProvider } from "./lead-finder/firecrawl-provider";
 import { PageSpeedProvider } from "./lead-finder/pagespeed-provider";
 import {
@@ -678,6 +682,34 @@ async function handleWebsiteAuditRun(request: Request, env: Env) {
   }
 }
 
+async function handleAnalysisApi(request: Request, env: Env, pathname: string) {
+  try {
+    if (request.method === "GET" && pathname === "/api/lead-finder/analyses") {
+      return json({ success:true, monthlyCount:await analysisUsage(env.LEADS_DB),monthlyLimit:ANALYSIS_MONTHLY_LIMIT });
+    }
+    if (request.method === "GET" && pathname.startsWith("/api/lead-finder/analyses/")) {
+      const leadId = pathname.slice("/api/lead-finder/analyses/".length);
+      const validated = validateAnalysisRequest({leadId});
+      return json({success:true,analysis:await getAnalysis(env.LEADS_DB,validated.leadId)});
+    }
+    if (request.method === "POST" && pathname === "/api/lead-finder/analyses") {
+      if (!sameOrigin(request)) return json({success:false,message:"Zahtjev nije dopušten."},403);
+      const rate = await env.LEAD_SEARCH_LIMITER.limit({key:"lead-finder-analysis"});
+      if (!rate.success) return json({success:false,message:"Dosegnut je limit analiza u minuti."},429);
+      const body = await request.text();
+      if (new TextEncoder().encode(body).length > 4096) return json({success:false,message:"Zahtjev je prevelik."},413);
+      let payload:unknown;
+      try { payload=JSON.parse(body); } catch { return json({success:false,message:"Neispravan JSON."},400); }
+      const result = await runAnalysis(env.LEADS_DB,new OpenAIAnalysisProvider(env.OPENAI_API_KEY ?? ""),validateAnalysisRequest(payload));
+      return json(result,result.reused?200:201);
+    }
+    return json({success:false,message:"Endpoint nije pronađen."},404);
+  } catch(error) {
+    if (error instanceof AnalysisError) return json({success:false,code:error.code,message:error.message},error.httpStatus);
+    return json({success:false,code:"AI_STORAGE_ERROR",message:"AI analizu nije moguće učitati ili spremiti."},500);
+  }
+}
+
 async function handleLeadFinderApi(request: Request, env: Env, pathname: string) {
   if (!leadFinderConfigured(env)) {
     return json(
@@ -690,6 +722,10 @@ async function handleLeadFinderApi(request: Request, env: Env, pathname: string)
     );
   }
   if (!(await leadFinderAuthorized(request, env))) return leadFinderChallenge(true);
+
+  if (pathname === "/api/lead-finder/analyses" || pathname.startsWith("/api/lead-finder/analyses/")) {
+    return handleAnalysisApi(request,env,pathname);
+  }
 
   if (pathname === "/api/lead-finder/search" && request.method === "POST") {
     return handleLeadFinderSearch(request, env);

@@ -11,6 +11,7 @@ export default defineConfig({
           GOOGLE_PLACES_API_KEY: "google_test_secret",
           LEAD_FINDER_ACCESS_TOKEN: "lead_test_secret",
           FIRECRAWL_API_KEY: "fc-test-secret-12345678901234567890",
+          OPENAI_API_KEY: "sk-test-only-never-real",
         },
       },
     }),

@@ -4054,3 +4054,10 @@ summary:focus-visible {
   }
 
 }
+/* Internal Lead Finder scoring only. */
+.ai-analysis-panel { overflow-wrap: anywhere; }
+.ai-score-list { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 12px; margin: 24px 0; }
+.ai-score-list > div { padding: 16px; border: 1px solid #dedbd3; border-radius: 12px; }
+.ai-score-list dd { margin: 8px 0 0; font-weight: 700; }
+.ai-finding { padding: 20px 0; border-top: 1px solid #dedbd3; }
+.ai-finding blockquote { margin: 12px 0; padding: 12px 16px; background: #f5f3ed; border-left: 3px solid #ed5a35; }

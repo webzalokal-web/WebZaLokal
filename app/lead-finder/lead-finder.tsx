@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import AnalysisPanel from "./analysis-panel";
 import { useEffect, useMemo, useState, type FormEvent } from "react";
 
 type ProviderAttribution = {
@@ -286,6 +287,8 @@ export default function LeadFinder() {
   const [selectedAudit, setSelectedAudit] = useState<AuditDetail | null>(null);
   const [auditLoadingLeadId, setAuditLoadingLeadId] = useState<string | null>(null);
   const [auditError, setAuditError] = useState<string | null>(null);
+  const [scoringLeadId, setScoringLeadId] = useState<string | null>(null);
+  const [rankByScore, setRankByScore] = useState(false);
 
   const auditsByLead = useMemo(
     () => new Map((audits?.audits ?? []).map((audit) => [audit.leadId, audit])),
@@ -753,13 +756,15 @@ export default function LeadFinder() {
         )}
       </section>
 
+      {(scoringLeadId || selectedAudit) && <AnalysisPanel key={`${scoringLeadId ?? selectedAudit!.leadId}:${auditsByLead.get(scoringLeadId ?? selectedAudit!.leadId)?.id ?? "none"}`} leadId={scoringLeadId ?? selectedAudit!.leadId} auditId={auditsByLead.get(scoringLeadId ?? selectedAudit!.leadId)?.id ?? null} onSaved={async () => { await loadArchive(); }} />}
+
       <section className="lead-archive-card" aria-live="polite">
         <div className="lead-results-heading">
           <div>
             <span>D1 source of truth</span>
             <h2>Trajni Lead Archive</h2>
           </div>
-          <p>{archive?.leads.length ?? 0} prikazanih · najviše 200</p>
+          <div><p>{archive?.leads.length ?? 0} prikazanih · najviše 200</p><label><input type="checkbox" checked={rankByScore} onChange={e=>setRankByScore(e.target.checked)} /> Rangiraj prikazane leadove po Opportunity Scoreu</label></div>
         </div>
 
         {summaryLoading ? (
@@ -780,6 +785,7 @@ export default function LeadFinder() {
                     <th>Lokacija</th>
                     <th>Vrsta</th>
                     <th>Prioritet</th>
+                    <th>AI scoring</th>
                     <th>Lead status</th>
                     <th>Audit</th>
                     <th>Kontakt</th>
@@ -788,7 +794,7 @@ export default function LeadFinder() {
                   </tr>
                 </thead>
                 <tbody>
-                  {archive.leads.map((lead) => {
+                  {(rankByScore ? [...archive.leads].sort((a,b)=>(b.opportunityScore ?? -1)-(a.opportunityScore ?? -1)) : archive.leads).map((lead) => {
                     const existingAudit = auditsByLead.get(lead.id);
                     return (
                     <tr key={lead.id}>
@@ -796,6 +802,7 @@ export default function LeadFinder() {
                       <td>{lead.locationHint}</td>
                       <td>{lead.businessTypeHint}</td>
                       <td><span className={`lead-priority ${lead.priority.toLowerCase()}`}>{lead.priority}</span></td>
+                      <td><button className="audit-table-button" type="button" onClick={()=>setScoringLeadId(lead.id)}>{lead.opportunityScore === null ? "Otvori AI analizu" : `${lead.opportunityScore}/100 · otvori`}</button></td>
                       <td>{lead.leadStatus}</td>
                       <td>
                         {existingAudit ? (
