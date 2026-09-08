@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import AnalysisPanel from "./analysis-panel";
+import { priorityLabel, reviewMessage, reviewStatus } from "./display-labels";
 import { useEffect, useMemo, useState, type FormEvent } from "react";
 
 type ProviderAttribution = {
@@ -259,7 +260,7 @@ function SignalList({ signals }: { signals: Record<string, AuditSignal> }) {
     <ul className="audit-signal-list">
       {Object.entries(signals).map(([key, signal]) => (
         <li key={key}>
-          <span className={`audit-check ${signal.status.toLowerCase()}`}>{signal.status}</span>
+          <span className={`audit-check ${signal.status.toLowerCase()}`}>{({PASS:"Potvrđeno",FAIL:"Nedostatak",UNKNOWN:"Nije dostupno"})[signal.status]}</span>
           <div>
             <strong>{signalLabels[key] ?? key}</strong>
             <small>
@@ -420,6 +421,7 @@ export default function LeadFinder() {
         throw new Error(isRecord(payload) && typeof payload.message === "string" ? payload.message : "Audit nije dostupan.");
       }
       setSelectedAudit((payload as AuditDetailResponse).audit);
+      setScoringLeadId(leadId);
     } catch (caught) {
       setAuditError(caught instanceof Error ? caught.message : "Audit nije dostupan.");
     } finally {
@@ -428,7 +430,7 @@ export default function LeadFinder() {
   };
 
   const runAudit = async (leadId: string, websiteUrl: string | null, refresh: boolean) => {
-    if (refresh && !window.confirm("Re-audit će napraviti nove Firecrawl pozive i jedan PageSpeed poziv. Nastaviti?")) return;
+    if (refresh && !window.confirm("Ponovni pregled weba napravit će nove Firecrawl pozive i jedan PageSpeed poziv. Nastaviti?")) return;
     setAuditLoadingLeadId(leadId);
     setAuditError(null);
     try {
@@ -444,6 +446,7 @@ export default function LeadFinder() {
       }
       const audit = (payload as AuditRunResponse).audit;
       setSelectedAudit(audit);
+      setScoringLeadId(leadId);
       await Promise.all([loadAudits(), loadArchive()]);
     } catch (caught) {
       setAuditError(caught instanceof Error ? caught.message : "Audit nije moguće pokrenuti.");
@@ -630,7 +633,7 @@ export default function LeadFinder() {
                     <th>Recenzije</th>
                     <th>Website</th>
                     <th>Telefon</th>
-                    <th>Audit</th>
+                    <th>Pregled weba</th>
                     <th>D1</th>
                   </tr>
                 </thead>
@@ -659,11 +662,11 @@ export default function LeadFinder() {
                       <td>
                         {existingAudit ? (
                           <button className="audit-table-button" type="button" disabled={auditBusy} onClick={() => void openAudit(lead.id)}>
-                            {auditBusy ? "Učitavam…" : existingAudit.auditStatus}
+                            {auditBusy ? "Učitavam…" : reviewStatus(existingAudit.auditStatus)}
                           </button>
                         ) : lead.websiteUrl ? (
                           <button className="audit-table-button start" type="button" disabled={auditBusy} onClick={() => void runAudit(lead.id, lead.websiteUrl, false)}>
-                            {auditBusy ? "Auditiram…" : "Auditiraj"}
+                            {auditBusy ? "Pregledavam…" : "Pregled weba"}
                           </button>
                         ) : (
                           <span className="lead-missing">Bez websitea</span>
@@ -690,40 +693,41 @@ export default function LeadFinder() {
       <section className="website-audit-card" aria-live="polite">
         <div className="lead-results-heading">
           <div>
-            <span>Evidence layer · D1</span>
-            <h2>{selectedAudit ? `Website audit · ${websiteLabel(selectedAudit.finalUrl ?? selectedAudit.websiteUrl)}` : "Automated Website Audit"}</h2>
+            <span>Spremljeni pregled stranice</span>
+            <h2>{selectedAudit ? `Pregled weba · ${websiteLabel(selectedAudit.finalUrl ?? selectedAudit.websiteUrl)}` : "Pregled weba"}</h2>
           </div>
           {selectedAudit && (
             <div className="audit-heading-actions">
-              <span className={`audit-status ${selectedAudit.auditStatus.toLowerCase()}`}>{selectedAudit.auditStatus}</span>
+              <span className={`audit-status ${selectedAudit.auditStatus.toLowerCase()}`}>{reviewStatus(selectedAudit.auditStatus)}</span>
               <button
                 type="button"
                 disabled={auditLoadingLeadId === selectedAudit.leadId}
                 onClick={() => void runAudit(selectedAudit.leadId, selectedAudit.websiteUrl, true)}
               >
-                {auditLoadingLeadId === selectedAudit.leadId ? "Re-auditiram…" : "Refresh / Re-audit"}
+                {auditLoadingLeadId === selectedAudit.leadId ? "Ponovno pregledavam…" : "Ponovi pregled weba"}
               </button>
             </div>
           )}
         </div>
 
-        {auditError && <div className="lead-error audit-error" role="alert"><strong>Audit nije završen</strong><p>{auditError}</p></div>}
+        {auditError && <div className="lead-error audit-error" role="alert"><strong>Pregled weba nije završen</strong><p>{reviewMessage(auditError)}</p></div>}
 
         {!selectedAudit ? (
           <div className="lead-results-empty audit-empty">
             <i aria-hidden="true">◎</i>
             <strong>Odaberi lead koji ima website.</strong>
-            <p>Prvi audit koristi najviše 5 Firecrawl stranica i 1 PageSpeed mobile poziv. Ponovno otvaranje spremljenog audita nema vanjskih poziva.</p>
+            <p>Pregled weba obuhvaća najviše 5 stranica i jednu provjeru brzine na mobitelu. Otvaranje spremljenog pregleda ne troši nove pozive.</p>
           </div>
         ) : (
           <>
             <div className="audit-summary-grid">
-              <article><span>Status</span><strong>{selectedAudit.auditStatus}</strong></article>
-              <article><span>Zadnji audit</span><strong>{selectedAudit.auditedAt ? displayDate(selectedAudit.auditedAt) : "U tijeku"}</strong></article>
+              <article><span>Status</span><strong>{reviewStatus(selectedAudit.auditStatus)}</strong></article>
+              <article><span>Zadnji pregled weba</span><strong>{selectedAudit.auditedAt ? displayDate(selectedAudit.auditedAt) : "U tijeku"}</strong></article>
               <article><span>Stranice</span><strong>{selectedAudit.firecrawlPagesUsed}/{selectedAudit.pagesChecked}</strong><small>uspješno / pregledano</small></article>
-              <article><span>PageSpeed mobile</span><strong>{selectedAudit.pageSpeedMobile?.performanceScore ?? "—"}</strong><small>{selectedAudit.pageSpeedMobile?.status ?? "UNAVAILABLE"}</small></article>
+              <article><span>Brzina na mobitelu</span><strong>{selectedAudit.pageSpeedMobile?.performanceScore ?? "Nije dostupno"}</strong><small>{reviewStatus(selectedAudit.pageSpeedMobile?.status)}</small></article>
             </div>
 
+            <details><summary>Prikaži tehnički dokaz</summary>
             <div className="audit-signal-columns">
               <article><h3>Technical</h3><SignalList signals={selectedAudit.technicalSignals} /></article>
               <article><h3>SEO</h3><SignalList signals={selectedAudit.seoSignals} /></article>
@@ -752,11 +756,18 @@ export default function LeadFinder() {
                 <ul>{selectedAudit.errorDetails.map((detail, index) => <li key={`${detail.component}-${detail.code}-${index}`}>{detail.component}: {detail.code}</li>)}</ul>
               </div>
             )}
+            </details>
           </>
         )}
       </section>
 
-      {(scoringLeadId || selectedAudit) && <AnalysisPanel key={`${scoringLeadId ?? selectedAudit!.leadId}:${auditsByLead.get(scoringLeadId ?? selectedAudit!.leadId)?.id ?? "none"}`} leadId={scoringLeadId ?? selectedAudit!.leadId} auditId={auditsByLead.get(scoringLeadId ?? selectedAudit!.leadId)?.id ?? null} onSaved={async () => { await loadArchive(); }} />}
+      {(scoringLeadId || selectedAudit) && <AnalysisPanel
+        key={`${scoringLeadId ?? selectedAudit!.leadId}:${auditsByLead.get(scoringLeadId ?? selectedAudit!.leadId)?.id ?? "none"}`}
+        leadId={scoringLeadId ?? selectedAudit!.leadId}
+        auditId={auditsByLead.get(scoringLeadId ?? selectedAudit!.leadId)?.id ?? null}
+        businessName={result?.leads.find(lead => lead.id === (scoringLeadId ?? selectedAudit!.leadId))?.name}
+        websiteUrl={auditsByLead.get(scoringLeadId ?? selectedAudit!.leadId)?.finalUrl ?? auditsByLead.get(scoringLeadId ?? selectedAudit!.leadId)?.websiteUrl ?? result?.leads.find(lead => lead.id === (scoringLeadId ?? selectedAudit!.leadId))?.websiteUrl}
+        onSaved={async () => { await loadArchive(); }} />}
 
       <section className="lead-archive-card" aria-live="polite">
         <div className="lead-results-heading">
@@ -787,7 +798,7 @@ export default function LeadFinder() {
                     <th>Prioritet</th>
                     <th>AI scoring</th>
                     <th>Lead status</th>
-                    <th>Audit</th>
+                    <th>Pregled weba</th>
                     <th>Kontakt</th>
                     <th>Otkriven</th>
                     <th>Zadnja provjera</th>
@@ -801,15 +812,15 @@ export default function LeadFinder() {
                       <td className="lead-archive-id"><strong>{lead.providerPlaceId}</strong><span>{lead.provider}</span></td>
                       <td>{lead.locationHint}</td>
                       <td>{lead.businessTypeHint}</td>
-                      <td><span className={`lead-priority ${lead.priority.toLowerCase()}`}>{lead.priority}</span></td>
+                      <td><span className={`lead-priority ${lead.priority.toLowerCase()}`}>{priorityLabel(lead.priority)}</span></td>
                       <td><button className="audit-table-button" type="button" onClick={()=>setScoringLeadId(lead.id)}>{lead.opportunityScore === null ? "Otvori AI analizu" : `${lead.opportunityScore}/100 · otvori`}</button></td>
                       <td>{lead.leadStatus}</td>
                       <td>
                         {existingAudit ? (
                           <button className="audit-table-button" type="button" disabled={auditLoadingLeadId === lead.id} onClick={() => void openAudit(lead.id)}>
-                            {auditLoadingLeadId === lead.id ? "Učitavam…" : existingAudit.auditStatus}
+                            {auditLoadingLeadId === lead.id ? "Učitavam…" : reviewStatus(existingAudit.auditStatus)}
                           </button>
-                        ) : lead.auditStatus}
+                        ) : reviewStatus(lead.auditStatus)}
                       </td>
                       <td>{lead.contactStatus}</td>
                       <td><time dateTime={lead.discoveredAt}>{displayDate(lead.discoveredAt)}</time></td>

@@ -7,13 +7,13 @@ type Explanation = { problem: string; whyItMatters: string; improvement: string 
 // These explanations apply only when the referenced M2 check explicitly failed.
 const explanations: Record<string, Explanation> = {
   "signal:technical:mobileViewport": {
-    problem: "Na pregledanoj stranici nedostaje standardna postavka za pravilan prikaz na mobitelima.",
-    whyItMatters: "To može uzrokovati lošiji prikaz na manjim ekranima i otežati čitanje ponude.",
+    problem: "Nedostaje standardna postavka za mobilni prikaz",
+    whyItMatters: "Stranica nema jednu od standardnih postavki za prikaz na mobitelima. Zbog toga se na nekim uređajima sadržaj može prikazivati nepravilno i biti teži za čitanje.",
     improvement: "Dodati postavku za prilagodbu širini zaslona i provjeriti prikaz na mobitelu.",
   },
   "signal:seo:h1": {
-    problem: "U dohvaćenoj početnoj stranici nije pronađen posebno označen glavni naslov.",
-    whyItMatters: "Jasno označen glavni naslov može pomoći tražilicama i čitačima zaslona da razumiju o čemu je stranica.",
+    problem: "Glavni naslov nije jasno označen u strukturi početne stranice",
+    whyItMatters: "Pregled nije pronašao oznaku glavnog naslova, iako vidljivi naslov može postojati. Jasno označen naslov pomaže alatima koji čitaju stranicu naglas da prenesu što lokal nudi.",
     improvement: "Provjeriti postojeći naslov, jasno navesti što lokal nudi i označiti ga kao glavni naslov stranice.",
   },
   "signal:seo:title": {
