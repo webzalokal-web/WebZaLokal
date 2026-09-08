@@ -1,6 +1,7 @@
 "use client";
 import { useEffect, useState } from "react";
 import type { AnalysisRecord } from "../../worker/lead-finder/analysis-types";
+import { findingLevels, presentFinding } from "./finding-presentation";
 
 const categories = { mobileUx:"Mobile & UX",conversion:"Conversion",performanceTechnical:"Performance & Technical",seoDiscoverability:"SEO & Discoverability",contentPresentation:"Content & Presentation" };
 const maxima = { mobileUx:25,conversion:25,performanceTechnical:20,seoDiscoverability:15,contentPresentation:15 };
@@ -59,9 +60,34 @@ export default function AnalysisPanel({leadId,auditId,onSaved}:{leadId:string;au
       {analysis.opportunity && <><p>{analysis.opportunity.reason}</p><dl className="ai-score-list">{Object.entries({"Website Need":analysis.opportunity.websiteNeed,"Business Quality":analysis.opportunity.businessQuality,"Fixability":analysis.opportunity.fixability,"Contactability":analysis.opportunity.contactability}).map(([label,value])=><div key={label}><dt>{label}</dt><dd>{value===null?"UNKNOWN":`${value}/100`}</dd></div>)}</dl></>}
       {analysis.result && <><dl className="ai-score-list">{Object.entries(categories).map(([key,label])=><div key={key}><dt>{label}</dt><dd>{analysis.result!.categoryScores[key as keyof typeof categories]}/{maxima[key as keyof typeof categories]}</dd></div>)}</dl>
         {analysis.result.adjustments.length>0 && <details><summary>Backend provjere scorea</summary><ul>{analysis.result.adjustments.map((a,i)=><li key={i}>{a}</li>)}</ul></details>}
-        <h3>Findings · dokazi i pouzdanost</h3>
+        <h3>Nalazi i prijedlozi poboljšanja</h3>
         {!analysis.result.findings.length && <p>Nema potvrđenih nalaza. To samo po sebi ne dokazuje da je website bez problema.</p>}
-        {analysis.result.findings.map((f,i)=><article className="ai-finding" key={i}><h4>{f.problem}</h4><p>Severity: {f.severity} · Confidence: {f.confidence} · Sales relevance: {f.salesRelevance}</p><blockquote>{f.evidence}</blockquote><p>{f.suggestedFix}</p><p>{f.outreachEligible?"Kandidat za buduću outreach tvrdnju; potrebna ljudska provjera.":"Nije dopušten za budući outreach tekst bez dodatne provjere."}</p><ul>{f.evidenceRefs.map(ref=>{const e=analysis.evidence.find(item=>item.id===ref);return <li key={ref}><code>{ref}</code>{e?.url && <span> · {e.url}</span>}</li>;})}</ul></article>)}
+        {analysis.result.findings.map((f,i)=>{
+          const copy = presentFinding(f, analysis.evidence);
+          return <article className="ai-finding" key={i}>
+            <h4>Problem</h4><p>{copy.problem}</p>
+            <p><strong>Zašto je važno</strong><br />{copy.whyItMatters}</p>
+            <p><strong>Kako poboljšati</strong><br />{copy.improvement}</p>
+            <dl className="ai-score-list">
+              <div><dt>Važnost</dt><dd>{findingLevels[f.severity]}</dd></div>
+              <div><dt>Pouzdanost nalaza</dt><dd>{findingLevels[f.confidence]}</dd></div>
+              <div><dt>Pogodno za javljanje</dt><dd>{f.outreachEligible ? "Da" : "Ne"}</dd></div>
+            </dl>
+            <p>{f.outreachEligible ? "Prije korištenja u poruci provjeri nalaz i njegov dokaz." : "Ovaj nalaz nemoj koristiti kao tvrdnju u poruci bez dodatne provjere."}</p>
+            <details>
+              <summary>Tehnički detalji / Prikaži dokaz</summary>
+              <p><strong>Izvorni nalaz:</strong> {f.problem}</p>
+              <p><strong>Važnost za prodajni razgovor:</strong> {findingLevels[f.salesRelevance]}</p>
+              <blockquote>{f.evidence}</blockquote>
+              <p><strong>Izvorni prijedlog:</strong> {f.suggestedFix}</p>
+              <ul>{f.evidenceRefs.map(ref=>{const e=analysis.evidence.find(item=>item.id===ref);return <li key={ref}>
+                <code>{ref}</code>{e?.url && <p><strong>Adresa:</strong> {e.url}</p>}
+                {e?.pageId && <p><strong>ID stranice:</strong> <code>{e.pageId}</code></p>}
+                {e && <p style={{whiteSpace:"pre-wrap"}}>{e.data}</p>}
+              </li>;})}</ul>
+            </details>
+          </article>;
+        })}
       </>}
       <p>Provider: {analysis.provider} · Model: {analysis.model} · Analysis v{analysis.analysisVersion} / Prompt v{analysis.promptVersion} · Tokeni: {analysis.inputTokens ?? "—"} input / {analysis.outputTokens ?? "—"} output</p>
     </>}
